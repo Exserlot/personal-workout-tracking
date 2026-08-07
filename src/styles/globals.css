@@ -1,0 +1,162 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+
+  /* Foundation palette — stored as RGB channels for Tailwind alpha support. */
+  --neutral-1000: 9 10 11;
+  --neutral-950: 14 15 17;
+  --neutral-900: 20 21 24;
+  --neutral-850: 26 28 32;
+  --neutral-800: 34 36 42;
+  --neutral-700: 48 51 58;
+  --neutral-600: 74 78 87;
+  --neutral-500: 115 120 131;
+  --neutral-400: 158 163 172;
+  --neutral-300: 197 200 206;
+  --neutral-100: 242 243 241;
+  --white: 255 255 255;
+  --red-700: 169 37 45;
+  --red-600: 196 49 57;
+  --red-500: 220 66 73;
+  --red-400: 238 106 112;
+  --green-400: 103 182 138;
+  --amber-400: 215 169 79;
+
+  /* Semantic aliases used by Tailwind and plain CSS. */
+  --color-canvas: var(--neutral-950);
+  --color-surface: var(--neutral-900);
+  --color-surface-interactive: var(--neutral-850);
+  --color-surface-subtle: var(--neutral-1000);
+  --color-text-primary: var(--neutral-100);
+  --color-text-secondary: var(--neutral-300);
+  --color-text-muted: var(--neutral-400);
+  --color-text-disabled: var(--neutral-500);
+  --color-border-subtle: var(--neutral-800);
+  --color-border-default: var(--neutral-700);
+  --color-border-strong: var(--neutral-600);
+  --color-action-primary-bg: var(--neutral-100);
+  --color-action-primary-fg: var(--neutral-1000);
+  --color-action-accent-bg: var(--red-600);
+  --color-accent-pressed: var(--red-700);
+  --color-accent: var(--red-500);
+  --color-success: var(--green-400);
+  --color-warning: var(--amber-400);
+  --color-error: var(--red-400);
+
+  --shell-mobile-header: 64px;
+  --shell-mobile-nav: 72px;
+  --shell-tablet-header: 64px;
+  --shell-desktop-rail: 72px;
+}
+
+@media (min-width: 1200px) {
+  :root {
+    --shell-desktop-rail: 216px;
+  }
+}
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  html {
+    min-width: 320px;
+    background: rgb(var(--color-canvas));
+    font-family: "IBM Plex Sans Thai", "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    min-width: 320px;
+    min-height: 100vh;
+    margin: 0;
+    overflow-x: clip;
+    background: rgb(var(--color-canvas));
+    color: rgb(var(--color-text-primary));
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+  }
+
+  button,
+  a {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  :focus-visible {
+    outline: 2px solid rgb(var(--neutral-100));
+    outline-offset: 3px;
+  }
+
+  ::selection {
+    background: rgb(var(--red-600));
+    color: rgb(var(--white));
+  }
+}
+
+@layer utilities {
+  .page-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    column-gap: 12px;
+  }
+
+  .safe-bottom {
+    padding-bottom: calc(16px + env(safe-area-inset-bottom));
+  }
+
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+@media (min-width: 600px) {
+  .page-grid {
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+    column-gap: 16px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .page-grid {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    column-gap: 16px;
+  }
+}
+
+@media (min-width: 1440px) {
+  .page-grid {
+    column-gap: 24px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+@media (forced-colors: active) {
+  :focus-visible {
+    outline-color: Highlight;
+  }
+}

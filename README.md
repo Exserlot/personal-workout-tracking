@@ -30,7 +30,7 @@ The interface follows a restrained dark-mode Swiss International Style:
 
 ## Current Status
 
-The repository contains product documentation, domain design, and the initial React application foundation with placeholder routes. Real workout features, database integration, authentication, and sync behavior are not implemented yet.
+The repository contains product documentation, domain design, and a React application foundation. The Exercise Library uses a validated Supabase repository adapter, private owner authentication, protected routes, and row-level ownership. Workout planning and broader sync behavior remain future slices.
 
 ## Tech Stack
 
@@ -39,6 +39,7 @@ The repository contains product documentation, domain design, and the initial Re
 - Vite
 - Tailwind CSS
 - pnpm
+- Supabase REST API (browser-safe publishable/anon key only)
 
 ## Development
 
@@ -48,3 +49,6 @@ pnpm dev
 pnpm typecheck
 pnpm lint
 pnpm build
+```
+
+For local database setup, see [docs/supabase-local-setup.md](docs/supabase-local-setup.md).

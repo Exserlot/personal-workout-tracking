@@ -14,7 +14,7 @@ This repository contains a React/TypeScript application foundation plus product 
 - `src/components/layout/` contains the responsive shell; `src/components/ui/` contains shared primitives.
 - `src/pages/` contains static MVP route placeholders; `src/styles/` contains global tokens and Tailwind layers.
 
-No feature logic, persistence layer, or automated test suite exists yet.
+Exercise Library logic now lives under `src/features/exercises/` and uses a Supabase repository adapter; migrations and seed data live under `supabase/`. The rest of the product remains placeholder UI.
 
 ## Build, Test, and Development Commands
 
@@ -26,9 +26,10 @@ pnpm dev
 pnpm typecheck
 pnpm lint
 pnpm build
+pnpm test
 ```
 
-`dev` starts Vite; `typecheck`, `lint`, and `build` are required before handoff. There is no `test` script until a test framework is selected.
+`dev` starts Vite; `typecheck`, `lint`, `test`, and `build` are required before handoff. Use `pnpm test:e2e` for Playwright coverage after starting the local app/database.
 
 ## Coding Style & Naming Conventions
 

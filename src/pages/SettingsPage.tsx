@@ -4,8 +4,24 @@ import { Divider } from "../components/ui/Divider";
 import { EmptyState } from "../components/ui/EmptyState";
 import { Input } from "../components/ui/Input";
 import { SectionHeader } from "../components/ui/SectionHeader";
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "../features/auth/AuthContext";
 
 export function SettingsPage() {
+  const { session, signOut } = useAuth();
+  const navigate = useNavigate();
+  const [signingOut, setSigningOut] = useState(false);
+
+  async function handleSignOut() {
+    setSigningOut(true);
+    try {
+      await signOut();
+    } finally {
+      navigate("/login", { replace: true });
+    }
+  }
+
   return (
     <PageFrame pageId="P-13" title="ตั้งค่าและการซิงก์" description="Component states และ preferences แบบ static placeholder">
       <div className="page-grid">
@@ -24,6 +40,17 @@ export function SettingsPage() {
             <Button variant="quiet">Quiet</Button>
             <Button variant="destructive">Destructive</Button>
             <Button disabled>Disabled</Button>
+          </div>
+          <Divider />
+          <SectionHeader eyebrow="OWNER ACCOUNT" title="บัญชีที่กำลังใช้งาน" />
+          <div className="flex flex-col items-start justify-between gap-4 border-y border-line py-5 tablet:flex-row tablet:items-center">
+            <div className="min-w-0">
+              <p className="text-sm text-ink-muted">SIGNED IN AS</p>
+              <p className="mt-1 break-all font-semibold text-ink">{session?.user.email}</p>
+            </div>
+            <Button variant="secondary" onClick={handleSignOut} disabled={signingOut}>
+              {signingOut ? "กำลังออกจากระบบ…" : "ออกจากระบบ"}
+            </Button>
           </div>
         </section>
         <aside className="col-span-4 mt-10 tablet:col-span-3 tablet:mt-0 desktop:col-span-4 desktop:col-start-9">

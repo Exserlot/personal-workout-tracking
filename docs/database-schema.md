@@ -110,7 +110,7 @@ Application/database validation must reject a secondary `muscle_id` equal to the
 | `sequence_no` | integer | positive; unique per TemplateExercise |
 | `set_kind_code` | varchar | `WARM_UP`, `WORKING`, `DROP` |
 | `is_to_failure` | boolean | default false; invalid with WARM_UP |
-| `target_reps_min` | integer | positive; nullable only when no rep target |
+| `target_reps_min` | integer | positive; required for the current strength-first planning MVP |
 | `target_reps_max` | integer | positive; `>= target_reps_min` |
 | `target_weight_value` | decimal(10,3) | nonnegative; nullable |
 | `target_weight_unit` | varchar(2) | `KG`/`LB`; required with weight value |

@@ -91,6 +91,34 @@ export function filterExercises(exercises: Exercise[], query: ExerciseQuery) {
     .sort((left, right) => left.name.localeCompare(right.name, ["en", "th"]));
 }
 
+export interface ExercisePage {
+  items: Exercise[];
+  page: number;
+  pageCount: number;
+  startIndex: number;
+  endIndex: number;
+}
+
+export function paginateExercises(
+  exercises: Exercise[],
+  requestedPage: number,
+  pageSize = 10,
+): ExercisePage {
+  const safePageSize = Math.max(1, Math.trunc(pageSize));
+  const pageCount = Math.max(1, Math.ceil(exercises.length / safePageSize));
+  const page = Math.min(Math.max(1, Math.trunc(requestedPage)), pageCount);
+  const startIndex = (page - 1) * safePageSize;
+  const items = exercises.slice(startIndex, startIndex + safePageSize);
+
+  return {
+    items,
+    page,
+    pageCount,
+    startIndex,
+    endIndex: startIndex + items.length,
+  };
+}
+
 export function hasExerciseValidationErrors(errors: ExerciseValidationErrors) {
   return Object.keys(errors).length > 0;
 }

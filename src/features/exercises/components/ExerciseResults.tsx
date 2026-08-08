@@ -1,9 +1,14 @@
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { Button } from "../../../components/ui/Button";
 import {
   getEquipmentLabel,
   getMuscleLabel,
   type Exercise,
 } from "../domain/exercise";
+import { paginateExercises } from "../domain/exerciseRules";
+
+const EXERCISES_PER_PAGE = 10;
 
 function sourceLabel(exercise: Exercise) {
   return exercise.source === "starter" ? "Starter" : "Custom";
@@ -22,11 +27,74 @@ function StatusLabel({ exercise }: { exercise: Exercise }) {
   );
 }
 
+function ExercisePagination({
+  page,
+  pageCount,
+  startIndex,
+  endIndex,
+  total,
+  onPageChange,
+}: {
+  page: number;
+  pageCount: number;
+  startIndex: number;
+  endIndex: number;
+  total: number;
+  onPageChange: (page: number) => void;
+}) {
+  if (total <= EXERCISES_PER_PAGE) return null;
+
+  return (
+    <nav
+      aria-label="แบ่งหน้ารายการท่าฝึก"
+      className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4"
+    >
+      <p className="text-sm text-ink-muted">
+        แสดง {startIndex + 1}–{endIndex} จาก {total} รายการ
+      </p>
+      <div className="flex items-center gap-2">
+        <Button
+          variant="secondary"
+          size="default"
+          onClick={() => onPageChange(page - 1)}
+          disabled={page === 1}
+          aria-label="ไปหน้าก่อนหน้า"
+        >
+          ก่อนหน้า
+        </Button>
+        <span aria-live="polite" className="min-w-20 text-center text-sm font-semibold text-ink">
+          หน้า {page} / {pageCount}
+        </span>
+        <Button
+          variant="secondary"
+          size="default"
+          onClick={() => onPageChange(page + 1)}
+          disabled={page === pageCount}
+          aria-label="ไปหน้าถัดไป"
+        >
+          ถัดไป
+        </Button>
+      </div>
+    </nav>
+  );
+}
+
 export function ExerciseResults({ exercises }: { exercises: Exercise[] }) {
+  const [requestedPage, setRequestedPage] = useState(1);
+  const { items, page, pageCount, startIndex, endIndex } = paginateExercises(
+    exercises,
+    requestedPage,
+    EXERCISES_PER_PAGE,
+  );
+
+  useEffect(() => {
+    setRequestedPage(1);
+  }, [exercises]);
+
   return (
     <div id="exercise-results" className="min-w-0">
       <ul className="desktop:hidden">
-        {exercises.map((exercise) => (
+        {items.map((exercise) => (
           <li key={exercise.id}>
             <Link
               to={`/exercises/${exercise.id}`}
@@ -60,7 +128,7 @@ export function ExerciseResults({ exercises }: { exercises: Exercise[] }) {
             </tr>
           </thead>
           <tbody>
-            {exercises.map((exercise) => (
+            {items.map((exercise) => (
               <tr key={exercise.id} className="border-b border-line-subtle hover:bg-interactive">
                 <th scope="row" className="px-3 py-3 font-semibold">
                   <Link
@@ -82,6 +150,14 @@ export function ExerciseResults({ exercises }: { exercises: Exercise[] }) {
           </tbody>
         </table>
       </div>
+      <ExercisePagination
+        page={page}
+        pageCount={pageCount}
+        startIndex={startIndex}
+        endIndex={endIndex}
+        total={exercises.length}
+        onPageChange={setRequestedPage}
+      />
     </div>
   );
 }

@@ -1,11 +1,37 @@
-insert into public.muscles (code, name)
-values
-  ('chest', 'Chest'), ('back', 'Back'), ('shoulders', 'Shoulders'), ('biceps', 'Biceps'),
-  ('triceps', 'Triceps'), ('quadriceps', 'Quadriceps'), ('hamstrings', 'Hamstrings'),
-  ('glutes', 'Glutes'), ('calves', 'Calves'), ('core', 'Core')
-on conflict (code) do update set name = excluded.name, archived_at = null;
+-- Starter catalog: one canonical row per exercise, with stable IDs for repeatable deployments.
+-- The partial unique index on exercises(normalized_name) makes conflicting starter names fail atomically.
 
--- Keep this catalog in sync with 202608080006_starter_exercise_catalog.sql.
+do $$
+begin
+  if exists (
+    select 1
+    from (values
+      ('00000000-0000-0000-0000-000000000001'::uuid, 'barbell bench press'), ('00000000-0000-0000-0000-000000000002'::uuid, 'barbell back squat'), ('00000000-0000-0000-0000-000000000003'::uuid, 'barbell romanian deadlift'),
+      ('00000000-0000-0000-0000-000000000004'::uuid, 'lat pulldown'), ('00000000-0000-0000-0000-000000000005'::uuid, 'barbell overhead press'), ('00000000-0000-0000-0000-000000000006'::uuid, 'pull-up'),
+      ('00000000-0000-0000-0000-000000000007'::uuid, 'incline barbell bench press'), ('00000000-0000-0000-0000-000000000008'::uuid, 'dumbbell bench press'), ('00000000-0000-0000-0000-000000000009'::uuid, 'incline dumbbell press'),
+      ('00000000-0000-0000-0000-000000000010'::uuid, 'chest press machine'), ('00000000-0000-0000-0000-000000000011'::uuid, 'pec deck fly'), ('00000000-0000-0000-0000-000000000012'::uuid, 'cable crossover'), ('00000000-0000-0000-0000-000000000013'::uuid, 'cable chest fly'),
+      ('00000000-0000-0000-0000-000000000014'::uuid, 'push-up'), ('00000000-0000-0000-0000-000000000015'::uuid, 'chest-lean dips'), ('00000000-0000-0000-0000-000000000016'::uuid, 'barbell bent-over row'), ('00000000-0000-0000-0000-000000000017'::uuid, 'seated cable row'),
+      ('00000000-0000-0000-0000-000000000018'::uuid, 'one-arm dumbbell row'), ('00000000-0000-0000-0000-000000000019'::uuid, 'chest-supported dumbbell row'), ('00000000-0000-0000-0000-000000000020'::uuid, 't-bar row'), ('00000000-0000-0000-0000-000000000021'::uuid, 'barbell deadlift'),
+      ('00000000-0000-0000-0000-000000000022'::uuid, 'face pull'), ('00000000-0000-0000-0000-000000000023'::uuid, 'barbell front squat'), ('00000000-0000-0000-0000-000000000024'::uuid, 'leg press'), ('00000000-0000-0000-0000-000000000025'::uuid, 'bulgarian split squat'),
+      ('00000000-0000-0000-0000-000000000026'::uuid, 'dumbbell walking lunge'), ('00000000-0000-0000-0000-000000000027'::uuid, 'leg extension'), ('00000000-0000-0000-0000-000000000028'::uuid, 'lying leg curl'), ('00000000-0000-0000-0000-000000000029'::uuid, 'standing calf raise'),
+      ('00000000-0000-0000-0000-000000000030'::uuid, 'barbell biceps curl'), ('00000000-0000-0000-0000-000000000031'::uuid, 'dumbbell biceps curl'), ('00000000-0000-0000-0000-000000000032'::uuid, 'hammer curl'), ('00000000-0000-0000-0000-000000000033'::uuid, 'incline dumbbell curl'),
+      ('00000000-0000-0000-0000-000000000034'::uuid, 'cable biceps curl'), ('00000000-0000-0000-0000-000000000035'::uuid, 'cable triceps pushdown'), ('00000000-0000-0000-0000-000000000036'::uuid, 'overhead cable triceps extension'), ('00000000-0000-0000-0000-000000000037'::uuid, 'dumbbell overhead triceps extension'),
+      ('00000000-0000-0000-0000-000000000038'::uuid, 'close-grip bench press'), ('00000000-0000-0000-0000-000000000039'::uuid, 'bench dips'), ('00000000-0000-0000-0000-000000000040'::uuid, 'plank'), ('00000000-0000-0000-0000-000000000041'::uuid, 'side plank'),
+      ('00000000-0000-0000-0000-000000000042'::uuid, 'dead bug'), ('00000000-0000-0000-0000-000000000043'::uuid, 'bird dog'), ('00000000-0000-0000-0000-000000000044'::uuid, 'hanging knee raise'), ('00000000-0000-0000-0000-000000000045'::uuid, 'reverse crunch'),
+      ('00000000-0000-0000-0000-000000000046'::uuid, 'cable crunch'), ('00000000-0000-0000-0000-000000000047'::uuid, 'pallof press'), ('00000000-0000-0000-0000-000000000048'::uuid, 'dumbbell russian twist'), ('00000000-0000-0000-0000-000000000049'::uuid, 'ab wheel rollout')
+    ) as catalog(expected_id, normalized_name)
+    join public.exercises existing
+      on existing.normalized_name = catalog.normalized_name
+     and existing.id <> catalog.expected_id
+     and existing.owner_user_id is null
+  ) then
+    -- The upsert below is intentionally keyed by the stable UUID. A name collision with
+    -- another UUID must stop the migration rather than overwrite an unrelated row.
+    raise exception 'starter exercise normalized_name conflicts with an existing UUID';
+  end if;
+end;
+$$;
+
 with catalog(id, name, normalized_name, equipment_code, primary_code, notes, secondary_codes) as (
   values
     ('00000000-0000-0000-0000-000000000001'::uuid, 'Barbell Bench Press', 'barbell bench press', 'barbell', 'chest', 'วางเท้าให้มั่นคง เกร็งสะบักและลดบาร์อย่างควบคุมก่อนดันกลับโดยไม่ยกไหล่', array['triceps','shoulders']::text[]),
@@ -56,24 +82,41 @@ with catalog(id, name, normalized_name, equipment_code, primary_code, notes, sec
     ('00000000-0000-0000-0000-000000000046'::uuid, 'Cable Crunch', 'cable crunch', 'cable', 'core', 'คุกเข่าหน้าสายเคเบิล ม้วนซี่โครงเข้าหาเชิงกรานโดยไม่ดึงด้วยแขน', array[]::text[]),
     ('00000000-0000-0000-0000-000000000047'::uuid, 'Pallof Press', 'pallof press', 'cable', 'core', 'ยืนตั้งฉากกับสาย เกร็งแกนกลางและดันมือออกโดยต้านแรงหมุนของสาย', array[]::text[]),
     ('00000000-0000-0000-0000-000000000048'::uuid, 'Dumbbell Russian Twist', 'dumbbell russian twist', 'dumbbell', 'core', 'นั่งเอนหลังพอดี เกร็งท้องและหมุนลำตัวโดยไม่เร่งหรือเหวี่ยงดัมบ์เบล', array[]::text[]),
-    ('00000000-0000-0000-0000-000000000049'::uuid, 'Ab Wheel Rollout', 'ab wheel rollout', 'bodyweight', 'core', 'เริ่มจากระยะสั้น เกร็งหน้าท้องและกลิ้งออกโดยไม่ปล่อยหลังแอ่นก่อนดึงกลับ', array['shoulders','back']::text[]),
-    ('00000000-0000-0000-0000-000000000050'::uuid, 'Parallel Bar Dips', 'parallel bar dips', 'bodyweight', 'triceps', 'จับบาร์คู่ให้มั่นคง เกร็งลำตัวและลดตัวด้วยการคุมข้อศอกก่อนดันกลับโดยไม่แกว่ง', array['chest','shoulders']::text[])
+    ('00000000-0000-0000-0000-000000000049'::uuid, 'Ab Wheel Rollout', 'ab wheel rollout', 'bodyweight', 'core', 'เริ่มจากระยะสั้น เกร็งหน้าท้องและกลิ้งออกโดยไม่ปล่อยหลังแอ่นก่อนดึงกลับ', array['shoulders','back']::text[])
 ), upserted as (
   insert into public.exercises (id, owner_user_id, name, normalized_name, equipment_code, primary_muscle_id, notes, archived_at)
   select c.id, null, c.name, c.normalized_name, c.equipment_code, m.id, c.notes, null
   from catalog c join public.muscles m on m.code = c.primary_code
   on conflict (id) do update set
-    owner_user_id = null, name = excluded.name, normalized_name = excluded.normalized_name,
-    equipment_code = excluded.equipment_code, primary_muscle_id = excluded.primary_muscle_id,
-    notes = excluded.notes, archived_at = null,
+    owner_user_id = null,
+    name = excluded.name,
+    normalized_name = excluded.normalized_name,
+    equipment_code = excluded.equipment_code,
+    primary_muscle_id = excluded.primary_muscle_id,
+    notes = excluded.notes,
+    archived_at = null,
     version = public.exercises.version + case when
       public.exercises.owner_user_id is distinct from excluded.owner_user_id or
-      public.exercises.name is distinct from excluded.name or public.exercises.normalized_name is distinct from excluded.normalized_name or
-      public.exercises.equipment_code is distinct from excluded.equipment_code or public.exercises.primary_muscle_id is distinct from excluded.primary_muscle_id or
-      public.exercises.notes is distinct from excluded.notes or public.exercises.archived_at is not null then 1 else 0 end
+      public.exercises.name is distinct from excluded.name or
+      public.exercises.normalized_name is distinct from excluded.normalized_name or
+      public.exercises.equipment_code is distinct from excluded.equipment_code or
+      public.exercises.primary_muscle_id is distinct from excluded.primary_muscle_id or
+      public.exercises.notes is distinct from excluded.notes or
+      public.exercises.archived_at is not null
+      then 1 else 0 end,
+    updated_at = case when
+      public.exercises.owner_user_id is distinct from excluded.owner_user_id or
+      public.exercises.name is distinct from excluded.name or
+      public.exercises.normalized_name is distinct from excluded.normalized_name or
+      public.exercises.equipment_code is distinct from excluded.equipment_code or
+      public.exercises.primary_muscle_id is distinct from excluded.primary_muscle_id or
+      public.exercises.notes is distinct from excluded.notes or
+      public.exercises.archived_at is not null
+      then now() else public.exercises.updated_at end
   returning id
 )
-delete from public.exercise_secondary_muscles s where s.exercise_id in (select id from catalog);
+delete from public.exercise_secondary_muscles s
+where s.exercise_id in (select id from catalog);
 
 with catalog(id, secondary_codes) as (
   values
@@ -82,9 +125,9 @@ with catalog(id, secondary_codes) as (
     ('00000000-0000-0000-0000-000000000016'::uuid, array['biceps','core']::text[]), ('00000000-0000-0000-0000-000000000017'::uuid, array['biceps','core']::text[]), ('00000000-0000-0000-0000-000000000018'::uuid, array['biceps','core']::text[]), ('00000000-0000-0000-0000-000000000019'::uuid, array['biceps']::text[]), ('00000000-0000-0000-0000-000000000020'::uuid, array['biceps','core']::text[]), ('00000000-0000-0000-0000-000000000021'::uuid, array['glutes','back','core']::text[]), ('00000000-0000-0000-0000-000000000022'::uuid, array['shoulders']::text[]),
     ('00000000-0000-0000-0000-000000000023'::uuid, array['glutes','hamstrings','core']::text[]), ('00000000-0000-0000-0000-000000000024'::uuid, array['glutes']::text[]), ('00000000-0000-0000-0000-000000000025'::uuid, array['glutes','hamstrings']::text[]), ('00000000-0000-0000-0000-000000000026'::uuid, array['glutes','hamstrings']::text[]), ('00000000-0000-0000-0000-000000000027'::uuid, array[]::text[]), ('00000000-0000-0000-0000-000000000028'::uuid, array['calves']::text[]), ('00000000-0000-0000-0000-000000000029'::uuid, array[]::text[]),
     ('00000000-0000-0000-0000-000000000030'::uuid, array[]::text[]), ('00000000-0000-0000-0000-000000000031'::uuid, array[]::text[]), ('00000000-0000-0000-0000-000000000032'::uuid, array[]::text[]), ('00000000-0000-0000-0000-000000000033'::uuid, array[]::text[]), ('00000000-0000-0000-0000-000000000034'::uuid, array[]::text[]), ('00000000-0000-0000-0000-000000000035'::uuid, array[]::text[]), ('00000000-0000-0000-0000-000000000036'::uuid, array[]::text[]), ('00000000-0000-0000-0000-000000000037'::uuid, array[]::text[]), ('00000000-0000-0000-0000-000000000038'::uuid, array['chest','shoulders']::text[]), ('00000000-0000-0000-0000-000000000039'::uuid, array['shoulders','chest']::text[]),
-    ('00000000-0000-0000-0000-000000000040'::uuid, array[]::text[]), ('00000000-0000-0000-0000-000000000041'::uuid, array[]::text[]), ('00000000-0000-0000-0000-000000000042'::uuid, array[]::text[]), ('00000000-0000-0000-0000-000000000043'::uuid, array['back']::text[]), ('00000000-0000-0000-0000-000000000044'::uuid, array['shoulders']::text[]), ('00000000-0000-0000-0000-000000000045'::uuid, array[]::text[]), ('00000000-0000-0000-0000-000000000046'::uuid, array[]::text[]), ('00000000-0000-0000-0000-000000000047'::uuid, array[]::text[]), ('00000000-0000-0000-0000-000000000048'::uuid, array[]::text[]), ('00000000-0000-0000-0000-000000000049'::uuid, array['shoulders','back']::text[]), ('00000000-0000-0000-0000-000000000050'::uuid, array['chest','shoulders']::text[])
+    ('00000000-0000-0000-0000-000000000040'::uuid, array[]::text[]), ('00000000-0000-0000-0000-000000000041'::uuid, array[]::text[]), ('00000000-0000-0000-0000-000000000042'::uuid, array[]::text[]), ('00000000-0000-0000-0000-000000000043'::uuid, array['back']::text[]), ('00000000-0000-0000-0000-000000000044'::uuid, array['shoulders']::text[]), ('00000000-0000-0000-0000-000000000045'::uuid, array[]::text[]), ('00000000-0000-0000-0000-000000000046'::uuid, array[]::text[]), ('00000000-0000-0000-0000-000000000047'::uuid, array[]::text[]), ('00000000-0000-0000-0000-000000000048'::uuid, array[]::text[]), ('00000000-0000-0000-0000-000000000049'::uuid, array['shoulders','back']::text[])
 )
 insert into public.exercise_secondary_muscles (exercise_id, muscle_id, sequence_no)
-select c.id, m.id, u.sequence_no from catalog c
-cross join lateral unnest(c.secondary_codes) with ordinality as u(code, sequence_no)
+select c.id, m.id, u.sequence_no
+from catalog c cross join lateral unnest(c.secondary_codes) with ordinality as u(code, sequence_no)
 join public.muscles m on m.code = u.code;

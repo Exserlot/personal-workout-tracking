@@ -4,6 +4,7 @@ import { defaultExerciseQuery } from "./exercise";
 import {
   filterExercises,
   normalizeExerciseName,
+  paginateExercises,
   validateExerciseDraft,
 } from "./exerciseRules";
 
@@ -87,5 +88,25 @@ describe("exercise rules", () => {
     });
 
     expect(results.map((exercise) => exercise.id)).toEqual(["custom-raise"]);
+  });
+
+  it("paginates results and clamps an out-of-range page", () => {
+    const manyExercises = Array.from({ length: 21 }, (_, index) => ({
+      ...exercises[0],
+      id: `exercise-${index}`,
+    }));
+
+    expect(paginateExercises(manyExercises, 2, 10)).toMatchObject({
+      page: 2,
+      pageCount: 3,
+      startIndex: 10,
+      endIndex: 20,
+    });
+    expect(paginateExercises(manyExercises, 99, 10)).toMatchObject({
+      page: 3,
+      items: [manyExercises[20]],
+      startIndex: 20,
+      endIndex: 21,
+    });
   });
 });

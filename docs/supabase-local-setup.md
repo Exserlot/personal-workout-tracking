@@ -52,7 +52,7 @@ pnpm dev
 
 1. ระบบส่งไปหน้า Login เมื่อยังไม่มี session
 2. Login ด้วย owner ที่สร้างไว้ แล้วเปิด **Exercises**
-3. ต้องเห็น Starter Exercises 6 รายการ
+3. ต้องเห็น Starter Exercises 50 รายการ จาก catalog ที่รวม Parallel Bar Dips และรายการที่ซ้ำข้ามกลุ่มใช้ record เดียว
 4. สร้าง Custom Exercise แล้ว refresh หน้า; รายการต้องยังอยู่
 5. เปิดรายละเอียด แก้ข้อมูล และบันทึก
 6. Archive รายการ แล้วตรวจด้วยตัวกรอง Archived
@@ -61,5 +61,33 @@ pnpm dev
 รัน automated checks ด้วย `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm build` และ `pnpm test:e2e` เมื่อ dev server พร้อม
 
 ## Migration policy
+
+### Planning module local checks
+
+Migrations `202608080003_planning.sql` through `202608080005_planning_constraint_names.sql` create the Template, Routine, ordered child tables and integrity constraints. Migrations `202608080006_starter_exercise_catalog.sql` and `202608080007_parallel_bar_dips.sql` add the expanded starter exercise catalog. After pulling them, apply pending migrations incrementally (or reset a disposable local database so all migrations and starter exercises are applied):
+
+```powershell
+pnpm exec supabase db push --local
+# For a disposable local database only:
+pnpm exec supabase db reset
+```
+
+The browser only calls authenticated REST/RPC endpoints. Create a Template from **Plans → สร้าง Template**, add one or more Starter Exercises, save it, then create a Routine and add the saved Template as an ordered day. `Activate` must make that Routine the only active Routine; **Today** should then show its next Template. Empty Templates can be saved, but a Routine cannot be saved or activated until every referenced Template has at least one Exercise with a prescription.
+
+For database-level checks, run the migration reset first and inspect policies and constraints in Studio’s SQL editor while authenticated. Verify that a second active Routine is rejected, that an archived Template referenced by a non-archived Routine cannot be archived, and that activating a Routine resets `next_workout_index` to `0`. The UI maps revision conflicts, authorization failures, validation failures and offline errors to explicit states.
+
+Planning mutations are online-only in this slice. Active Workout snapshot, session ownership and offline workout writes are deferred to M-03; do not add a Start Workout action to the Today preview until that milestone.
+
+### Starter exercise catalog
+
+Migrations `202608080006_starter_exercise_catalog.sql` and `202608080007_parallel_bar_dips.sql` expand the starter catalog to 50 unique exercises covering the requested chest, back, arms, legs and core placements, including standard Parallel Bar Dips. They preserve the original six starter UUIDs, keep starter rows ownerless, and replace secondary-muscle rows in sequence. Apply and validate them with:
+
+```powershell
+pnpm exec supabase db push --local
+pnpm exec supabase db lint --local
+pnpm exec supabase test db
+```
+
+The same catalog is included in `supabase/seed.sql` for fresh local databases. Stable IDs make the seed safe to rerun; conflicting starter names fail instead of overwriting another exercise, and unchanged metadata does not increment `version`.
 
 เพิ่ม migration ใหม่แบบ timestamped ใต้ `supabase/migrations/`; ห้ามแก้ migration ที่ถูกใช้งานแล้ว Seed catalog ใน `supabase/seed.sql` ต้องรันซ้ำได้ Mutation RPC อนุญาตเฉพาะ `authenticated`; RLS ตรวจว่า `owner_user_id = auth.uid()`

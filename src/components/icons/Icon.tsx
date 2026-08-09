@@ -12,6 +12,7 @@ import {
   History,
   List,
   Menu,
+  MoreHorizontal,
   Pencil,
   Play,
   Plus,
@@ -35,6 +36,7 @@ export type IconName =
   | "settings"
   | "start"
   | "menu"
+  | "more"
   | "close"
   | "arrow"
   | "check"
@@ -60,6 +62,7 @@ const icons: Record<IconName, LucideIcon> = {
   settings: Settings,
   start: Play,
   menu: Menu,
+  more: MoreHorizontal,
   close: X,
   arrow: ArrowRight,
   check: Check,

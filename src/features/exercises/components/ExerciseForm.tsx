@@ -1,10 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { Link } from "react-router-dom";
 import { Button } from "../../../components/ui/Button";
 import { Input } from "../../../components/ui/Input";
 import { Select } from "../../../components/ui/Select";
 import { Textarea } from "../../../components/ui/Textarea";
-import { buttonStyles } from "../../../components/ui/buttonStyles";
 import { cn } from "../../../lib/cn";
 import { isExerciseRepositoryError } from "../data/ExerciseRepository";
 import {
@@ -23,6 +21,8 @@ import {
 interface ExerciseFormProps {
   exercise?: Exercise;
   onSubmit: (draft: ExerciseDraft) => Promise<void>;
+  onCancel: () => void;
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
 function toDraft(exercise?: Exercise): ExerciseDraft {
@@ -35,8 +35,9 @@ function toDraft(exercise?: Exercise): ExerciseDraft {
   };
 }
 
-export function ExerciseForm({ exercise, onSubmit }: ExerciseFormProps) {
+export function ExerciseForm({ exercise, onSubmit, onCancel, onDirtyChange }: ExerciseFormProps) {
   const initialDraft = useMemo(() => toDraft(exercise), [exercise]);
+  const baselineRef = useRef(JSON.stringify(initialDraft));
   const [draft, setDraft] = useState<ExerciseDraft>(initialDraft);
   const [fieldErrors, setFieldErrors] = useState<ExerciseValidationErrors>({});
   const [formError, setFormError] = useState("");
@@ -46,9 +47,11 @@ export function ExerciseForm({ exercise, onSubmit }: ExerciseFormProps) {
 
   useEffect(() => {
     setDraft(initialDraft);
+    baselineRef.current = JSON.stringify(initialDraft);
+    onDirtyChange?.(false);
     setFieldErrors({});
     setFormError("");
-  }, [initialDraft]);
+  }, [initialDraft, onDirtyChange]);
 
   useEffect(() => {
     if (hasErrors) errorSummaryRef.current?.focus();
@@ -63,14 +66,19 @@ export function ExerciseForm({ exercise, onSubmit }: ExerciseFormProps) {
     });
   }
 
+  function updateDraft(next: ExerciseDraft) {
+    setDraft(next);
+    onDirtyChange?.(JSON.stringify(next) !== baselineRef.current);
+  }
+
   function toggleSecondaryMuscle(code: MuscleCode) {
     clearFieldError("secondaryMuscleCodes");
-    setDraft((current) => ({
-      ...current,
-      secondaryMuscleCodes: current.secondaryMuscleCodes.includes(code)
-        ? current.secondaryMuscleCodes.filter((candidate) => candidate !== code)
-        : [...current.secondaryMuscleCodes, code],
-    }));
+    updateDraft({
+      ...draft,
+      secondaryMuscleCodes: draft.secondaryMuscleCodes.includes(code)
+        ? draft.secondaryMuscleCodes.filter((candidate) => candidate !== code)
+        : [...draft.secondaryMuscleCodes, code],
+    });
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -87,6 +95,8 @@ export function ExerciseForm({ exercise, onSubmit }: ExerciseFormProps) {
     setSubmitting(true);
     try {
       await onSubmit(draft);
+      baselineRef.current = JSON.stringify(draft);
+      onDirtyChange?.(false);
     } catch (error) {
       if (isExerciseRepositoryError(error)) {
         setFieldErrors(error.fieldErrors);
@@ -100,7 +110,7 @@ export function ExerciseForm({ exercise, onSubmit }: ExerciseFormProps) {
   }
 
   return (
-    <form noValidate onSubmit={handleSubmit} aria-busy={submitting}>
+    <form noValidate onSubmit={handleSubmit} aria-busy={submitting} className="pb-28 tablet:pb-0">
       {hasErrors ? (
         <div
           ref={errorSummaryRef}
@@ -124,7 +134,7 @@ export function ExerciseForm({ exercise, onSubmit }: ExerciseFormProps) {
           placeholder="เช่น Incline Dumbbell Press"
           onChange={(event) => {
             clearFieldError("name");
-            setDraft((current) => ({ ...current, name: event.target.value }));
+            updateDraft({ ...draft, name: event.target.value });
           }}
         />
 
@@ -137,13 +147,13 @@ export function ExerciseForm({ exercise, onSubmit }: ExerciseFormProps) {
               const primaryMuscleCode = event.target.value as ExerciseDraft["primaryMuscleCode"];
               clearFieldError("primaryMuscleCode");
               clearFieldError("secondaryMuscleCodes");
-              setDraft((current) => ({
-                ...current,
+              updateDraft({
+                ...draft,
                 primaryMuscleCode,
-                secondaryMuscleCodes: current.secondaryMuscleCodes.filter(
+                secondaryMuscleCodes: draft.secondaryMuscleCodes.filter(
                   (code) => code !== primaryMuscleCode,
                 ),
-              }));
+              });
             }}
           >
             <option value="">เลือกกล้ามเนื้อ</option>
@@ -158,10 +168,10 @@ export function ExerciseForm({ exercise, onSubmit }: ExerciseFormProps) {
             error={fieldErrors.equipmentCode}
             onChange={(event) => {
               clearFieldError("equipmentCode");
-              setDraft((current) => ({
-                ...current,
+              updateDraft({
+                ...draft,
                 equipmentCode: event.target.value as ExerciseDraft["equipmentCode"],
-              }));
+              });
             }}
           >
             <option value="">เลือกอุปกรณ์</option>
@@ -207,16 +217,16 @@ export function ExerciseForm({ exercise, onSubmit }: ExerciseFormProps) {
         <Textarea
           label="คำอธิบาย"
           value={draft.description}
-          helperText="Optional · ใช้บันทึกคำอธิบายสั้น ๆ ไม่ใช่ coaching content"
+          helperText="ไม่บังคับ · บันทึกวิธีตั้งท่าหรือข้อควรจำสั้น ๆ"
           maxLength={500}
-          onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))}
+          onChange={(event) => updateDraft({ ...draft, description: event.target.value })}
         />
       </div>
 
-      <div className="mt-8 flex flex-col-reverse gap-3 border-t border-line pt-6 tablet:flex-row tablet:justify-end">
-        <Link to="/exercises" className={buttonStyles({ variant: "secondary", className: "w-full tablet:w-auto" })}>
+      <div className="safe-bottom fixed inset-x-0 bottom-[var(--shell-mobile-nav)] z-20 flex gap-3 border-t border-line bg-canvas px-4 py-3 tablet:static tablet:mt-8 tablet:flex-row tablet:justify-end tablet:border-t tablet:px-0 tablet:py-6">
+        <Button type="button" variant="secondary" fullWidth className="tablet:w-auto" onClick={onCancel} disabled={submitting}>
           ยกเลิก
-        </Link>
+        </Button>
         <Button type="submit" fullWidth className="tablet:w-auto" disabled={submitting}>
           {submitting ? "กำลังบันทึก…" : exercise ? "บันทึกการแก้ไข" : "สร้างท่าฝึก"}
         </Button>

@@ -3,6 +3,8 @@ import type { Exercise } from "./exercise";
 import { defaultExerciseQuery } from "./exercise";
 import {
   filterExercises,
+  clearExerciseFilters,
+  hasActiveExerciseFilters,
   normalizeExerciseName,
   paginateExercises,
   validateExerciseDraft,
@@ -88,6 +90,12 @@ describe("exercise rules", () => {
     });
 
     expect(results.map((exercise) => exercise.id)).toEqual(["custom-raise"]);
+  });
+
+  it("counts active filters and clears the complete query", () => {
+    expect(hasActiveExerciseFilters(defaultExerciseQuery)).toBe(false);
+    expect(hasActiveExerciseFilters({ ...defaultExerciseQuery, search: "bench" })).toBe(true);
+    expect(clearExerciseFilters()).toEqual(defaultExerciseQuery);
   });
 
   it("paginates results and clamps an out-of-range page", () => {

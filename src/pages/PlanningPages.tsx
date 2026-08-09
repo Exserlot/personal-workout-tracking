@@ -5,6 +5,8 @@ import {
     useRef,
     useState,
     type ChangeEvent,
+    type KeyboardEvent as ReactKeyboardEvent,
+    type ReactNode,
 } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { Icon } from "../components/icons/Icon";
@@ -18,8 +20,6 @@ import { Textarea } from "../components/ui/Textarea";
 import { buttonStyles } from "../components/ui/buttonStyles";
 import { useExerciseRepository } from "../features/exercises/ExerciseRepositoryContext";
 import {
-    equipmentOptions,
-    muscleOptions,
     type EquipmentCode,
     type Exercise,
     type MuscleCode,
@@ -36,11 +36,18 @@ import type {
     WorkoutTemplateSummary,
 } from "../features/planning/domain/planning";
 import {
+    eligibleTemplates,
     moveItem,
+    otherRoutines,
+    plansPageActions,
     validateRoutineDraft,
     validateWorkoutTemplateDraft,
 } from "../features/planning/domain/planningRules";
 import { PlanningRepositoryError } from "../features/planning/data/PlanningRepository";
+import { ExerciseFilterPopover } from "../features/exercises/components/ExerciseFilterPopover";
+import { useWorkoutRepository } from "../features/workout/WorkoutRepositoryContext";
+import { getDeviceId } from "../features/workout/data/deviceIdentity";
+import type { WorkoutSession } from "../features/workout/domain/workout";
 
 const blankTemplate: WorkoutTemplateDraft = {
     name: "",
@@ -99,8 +106,50 @@ function routineToDraft(routine: Routine): RoutineDraft {
     };
 }
 
+function OverflowMenu({
+    label,
+    children,
+}: {
+    label: string;
+    children: (close: () => void) => ReactNode;
+}) {
+    const detailsRef = useRef<HTMLDetailsElement>(null);
+    const triggerRef = useRef<HTMLElement>(null);
+    const close = () => {
+        detailsRef.current?.removeAttribute("open");
+        triggerRef.current?.focus();
+    };
+
+    return (
+        <details
+            ref={detailsRef}
+            className="relative"
+            onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                    event.preventDefault();
+                    close();
+                }
+            }}
+        >
+            <summary
+                ref={triggerRef}
+                className="flex h-11 w-11 cursor-pointer list-none items-center justify-center rounded-xs border border-line text-ink-secondary hover:border-line-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-ink"
+                aria-label={label}
+            >
+                <Icon name="more" className="h-5 w-5" />
+            </summary>
+            <div className="absolute right-0 top-[calc(100%+0.5rem)] z-20 w-44 border border-line bg-surface p-1 shadow-overlay">
+                {children(close)}
+            </div>
+        </details>
+    );
+}
+
 export function PlansPage() {
     const repository = usePlanningRepository();
+    const workoutRepository = useWorkoutRepository();
+    const navigate = useNavigate();
+    const deviceId = useMemo(() => getDeviceId(), []);
     const [templates, setTemplates] = useState<WorkoutTemplateSummary[]>([]);
     const [routines, setRoutines] = useState<Routine[]>([]);
     const [loading, setLoading] = useState(true);
@@ -110,8 +159,27 @@ export function PlansPage() {
         useState<RoutineDraft>(blankRoutine);
     const [editingRoutine, setEditingRoutine] = useState<Routine | null>(null);
     const [routineEditorOpen, setRoutineEditorOpen] = useState(false);
+    const routineBaselineRef = useRef("");
     const [routineError, setRoutineError] = useState("");
     const [savingRoutine, setSavingRoutine] = useState(false);
+    const [activeSession, setActiveSession] = useState<WorkoutSession | null>(null);
+    const [activeSessionCheck, setActiveSessionCheck] = useState<
+        "checking" | "ready" | "error"
+    >("checking");
+
+    const refreshActiveSession = useCallback(async () => {
+        setActiveSessionCheck("checking");
+        try {
+            await workoutRepository.registerDevice(deviceId);
+            setActiveSession(await workoutRepository.getActiveSession(deviceId));
+            setActiveSessionCheck("ready");
+        } catch {
+            // Planning data can still be viewed when the workout check is unavailable.
+            // Keep editing disabled until the server can confirm there is no Active Session.
+            setActiveSession(null);
+            setActiveSessionCheck("error");
+        }
+    }, [deviceId, workoutRepository]);
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -134,24 +202,28 @@ export function PlansPage() {
         void load();
     }, [load]);
 
+    useEffect(() => {
+        void refreshActiveSession();
+    }, [refreshActiveSession]);
+
     function beginRoutine(routine?: Routine) {
+        if (routine?.isActive && activeSession) {
+            setNotice(
+                "แก้ไข Active Routine ไม่ได้ขณะมี Active Session กรุณา Finish หรือ Discard Workout ก่อน",
+            );
+            return;
+        }
+        const nextDraft = routine ? routineToDraft(routine) : { ...blankRoutine, days: [] };
         setEditingRoutine(routine ?? null);
         setRoutineEditorOpen(true);
-        setRoutineDraft(
-            routine ? routineToDraft(routine) : { ...blankRoutine, days: [] },
-        );
+        setRoutineDraft(nextDraft);
+        routineBaselineRef.current = JSON.stringify(nextDraft);
         setRoutineError("");
         setNotice("");
     }
 
     function addRoutineDay() {
-        const available = templates.find(
-            (template) =>
-                !template.archivedAt &&
-                !routineDraft.days.some(
-                    (day) => day.templateId === template.id,
-                ),
-        );
+        const available = eligibleTemplates(templates)[0];
         if (!available) return;
         const day: RoutineDayDraft = {
             clientId: crypto.randomUUID(),
@@ -192,6 +264,7 @@ export function PlansPage() {
             setRoutineEditorOpen(false);
             setEditingRoutine(null);
             setRoutineDraft(blankRoutine);
+            routineBaselineRef.current = "";
             setNotice("บันทึก Routine แล้ว");
             await load();
         } catch (saveError) {
@@ -209,6 +282,23 @@ export function PlansPage() {
             await load();
         } catch (activateError) {
             setError(errorMessage(activateError));
+        }
+    }
+
+    async function deactivate(routine: Routine) {
+        if (
+            !window.confirm(
+                `ปิดใช้งาน Routine “${routine.name}”? หน้า Today จะไม่มีแผนถัดไปจนกว่าจะ Activate Routine อีกครั้ง`,
+            )
+        )
+            return;
+        setNotice("");
+        try {
+            await repository.deactivateRoutine(routine.id, routine.revision);
+            setNotice("ปิดใช้งาน Routine แล้ว");
+            await load();
+        } catch (deactivateError) {
+            setError(errorMessage(deactivateError));
         }
     }
 
@@ -245,16 +335,72 @@ export function PlansPage() {
     }
 
     const activeRoutine = routines.find((routine) => routine.isActive);
+    const availableTemplates = eligibleTemplates(templates);
+    const activeTemplates = templates.filter((template) => !template.archivedAt);
+    const archivedTemplates = templates.filter((template) => Boolean(template.archivedAt));
+    const otherSavedRoutines = otherRoutines(routines);
+    const pageActions = plansPageActions(templates, routines);
+    const routineDirty = routineEditorOpen && JSON.stringify(routineDraft) !== routineBaselineRef.current;
+    const activeRoutineActionsDisabled = activeSessionCheck !== "ready" || Boolean(activeSession);
+
+    useEffect(() => {
+        if (!routineDirty) return;
+        const handler = (event: BeforeUnloadEvent) => {
+            event.preventDefault();
+        };
+        window.addEventListener("beforeunload", handler);
+        return () => window.removeEventListener("beforeunload", handler);
+    }, [routineDirty]);
+
+    function cancelRoutineEditor() {
+        if (routineDirty && !window.confirm("มีข้อมูล Routine ที่ยังไม่ได้บันทึก ต้องการออกหรือไม่?")) return;
+        setRoutineEditorOpen(false);
+        setEditingRoutine(null);
+        setRoutineDraft(blankRoutine);
+        routineBaselineRef.current = "";
+    }
+
+    function runPageAction(key: string, target?: "templates" | "routines") {
+        if (key === "create-template") {
+            navigate("/plans/templates/new");
+            return;
+        }
+        if (key === "create-routine") {
+            beginRoutine();
+            return;
+        }
+        if (target === "routines") {
+            const section = document.getElementById("saved-routines");
+            section?.scrollIntoView({ behavior: "smooth", block: "start" });
+            section?.focus({ preventScroll: true });
+        }
+    }
 
     return (
         <PageFrame
             pageId="P-05"
-            title="แผนและ Routine"
-            description="จัดลำดับ Template เป็น Routine A → B → C และกำหนดเป้าหมายจำนวนครั้งต่อสัปดาห์"
+            eyebrow={routineEditorOpen ? "P-05 · ROUTINE EDITOR" : "P-05 · PLANNING"}
+            title={routineEditorOpen ? (editingRoutine ? "แก้ไข Routine" : "สร้าง Routine") : "แผนและ Routine"}
+            description={routineEditorOpen ? "จัดลำดับวันและกำหนด Template ที่จะใช้ใน Routine" : "จัดลำดับ Template เป็น Routine และกำหนดเป้าหมายการฝึกต่อสัปดาห์"}
             action={
-                <Link to="/plans/templates/new" className={buttonStyles()}>
-                    สร้าง Template
-                </Link>
+                routineEditorOpen ? (
+                    <Button variant="quiet" onClick={cancelRoutineEditor}>
+                        <Icon name="chevron-left" className="h-5 w-5" />
+                        ยกเลิก
+                    </Button>
+                ) : (
+                    <div className="flex flex-wrap justify-end gap-2">
+                        {pageActions.map((action) => (
+                            <Button
+                                key={action.key}
+                                variant={action.variant === "primary" ? "primary" : "secondary"}
+                                onClick={() => runPageAction(action.key, action.target)}
+                            >
+                                {action.label}
+                            </Button>
+                        ))}
+                    </div>
+                )
             }
         >
             {notice ? (
@@ -286,29 +432,87 @@ export function PlansPage() {
                 </p>
             ) : (
                 <div className="space-y-12">
-                    <section>
+                    <section className={routineEditorOpen ? "hidden" : ""}>
                         <SectionHeader
                             eyebrow="ACTIVE ROUTINE"
                             title={
-                                activeRoutine?.name ?? "ยังไม่มี Active Routine"
+                                activeRoutine?.name ?? (templates.length === 0 ? "เริ่มจาก Workout Template" : "ยังไม่มี Active Routine")
                             }
                             description={
                                 activeRoutine
                                     ? `${activeRoutine.days.length} วัน · เป้าหมาย ${activeRoutine.weeklyFrequencyTarget} ครั้งต่อสัปดาห์`
-                                    : "สร้าง Routine จาก Template ที่บันทึกไว้ แล้วเปิดใช้งานเพื่อให้ Today แสดงลำดับถัดไป"
+                                    : templates.length === 0
+                                        ? "วางแผนการฝึกด้วย 3 ขั้นตอนสั้น ๆ"
+                                        : "สร้าง Routine จาก Template ที่บันทึกไว้ แล้วเปิดใช้งานเพื่อให้ Today แสดงลำดับถัดไป"
                             }
                             action={
-                                <Button
-                                    variant="secondary"
-                                    onClick={() => beginRoutine(activeRoutine)}
-                                >
-                                    {" "}
-                                    {activeRoutine
-                                        ? "แก้ไข Routine"
-                                        : "สร้าง Routine"}
-                                </Button>
+                                activeRoutine ? (
+                                    <div className="flex flex-wrap gap-2">
+                                        <Button
+                                            variant="secondary"
+                                            size="compact"
+                                            aria-label="แก้ไข Active Routine"
+                                            title={
+                                                activeSession
+                                                    ? "Finish หรือ Discard Active Session ก่อนแก้ไข Routine"
+                                                    : activeSessionCheck === "error"
+                                                        ? "ยังตรวจสอบ Active Session ไม่สำเร็จ กรุณาลองใหม่"
+                                                        : undefined
+                                            }
+                                            disabled={activeRoutineActionsDisabled}
+                                            onClick={() => beginRoutine(activeRoutine)}
+                                        >
+                                            <Icon name="edit" className="h-4 w-4" />
+                                            แก้ไข Routine
+                                        </Button>
+                                        <Button
+                                            variant="secondary"
+                                            size="compact"
+                                            disabled={activeRoutineActionsDisabled}
+                                            onClick={() => void deactivate(activeRoutine)}
+                                        >
+                                            Inactive
+                                        </Button>
+                                    </div>
+                                ) : undefined
                             }
+                            showTopRule={false}
                         />
+                        {activeRoutine && activeSession ? (
+                            <div className="mt-4 border-l-2 border-warning bg-surface px-4 py-3 text-sm">
+                                <p className="font-semibold text-warning">
+                                    มี Active Session อยู่
+                                </p>
+                                <p className="mt-1 text-ink-secondary">
+                                    แก้ไข Active Routine ได้หลังจากจบหรือยกเลิก Workout ปัจจุบัน
+                                </p>
+                                <Link
+                                    to="/workout/active"
+                                    className={buttonStyles({
+                                        variant: "quiet",
+                                        size: "compact",
+                                        className: "mt-2",
+                                    })}
+                                >
+                                    กลับไป Workout
+                                </Link>
+                            </div>
+                        ) : null}
+                        {activeRoutine && activeSessionCheck === "error" ? (
+                            <div className="mt-4 border-l-2 border-error bg-surface px-4 py-3 text-sm text-error">
+                                <p>
+                                    ยังตรวจสอบ Active Session ไม่สำเร็จ จึงปิดการแก้ไขไว้ชั่วคราว
+                                </p>
+                                <Button
+                                    variant="quiet"
+                                    size="compact"
+                                    className="mt-2"
+                                    onClick={() => void refreshActiveSession()}
+                                >
+                                    ลองตรวจสอบอีกครั้ง
+                                </Button>
+                            </div>
+                        ) : null}
                         {activeRoutine ? (
                             <ol className="mt-5 border-t border-line">
                                 {activeRoutine.days.map((day, index) => (
@@ -346,34 +550,42 @@ export function PlansPage() {
                                     </li>
                                 ))}
                             </ol>
+                        ) : templates.length === 0 ? (
+                            <ol className="mt-5 grid gap-3 border-t border-line pt-5 tablet:grid-cols-3">
+                                {[
+                                    ["01", "สร้าง Template", "กำหนดท่า Sets, Reps และเป้าหมาย"],
+                                    ["02", "จัดเป็น Routine", "เรียงวัน A → B → C"],
+                                    ["03", "เปิดใช้งาน", "ให้ Today แสดงวันถัดไป"],
+                                ].map(([marker, title, description]) => (
+                                    <li key={marker} className="border-b border-line-subtle pb-4">
+                                        <p className="text-xs font-semibold tracking-[0.08em] text-accent">{marker}</p>
+                                        <p className="mt-2 font-semibold">{title}</p>
+                                        <p className="mt-1 text-sm text-ink-muted">{description}</p>
+                                    </li>
+                                ))}
+                            </ol>
                         ) : (
                             <EmptyState
                                 marker="00"
-                                title="เริ่มจาก Workout Template"
-                                description="Template เป็นหน่วยที่นำไปเรียงใน Routine ได้ และแก้ไขภายหลังโดยไม่กระทบประวัติการซ้อม"
-                                action={
-                                    <Link
-                                        to="/plans/templates/new"
-                                        className={buttonStyles()}
-                                    >
-                                        สร้าง Template แรก
-                                    </Link>
-                                }
+                                title="ยังไม่มี Active Routine"
+                                description="เลือกสร้าง Routine ใหม่ หรือเปิดใช้งาน Routine ที่บันทึกไว้ เพื่อให้ Today แสดงลำดับถัดไป"
+                                showTopRule={false}
                             />
                         )}
                     </section>
 
-                    {routines.length > 0 ? (
-                        <section>
+                    {otherSavedRoutines.length > 0 ? (
+                        <section id="saved-routines" tabIndex={-1} className={routineEditorOpen ? "hidden" : "scroll-mt-8 border-t border-line pt-6"}>
                             <SectionHeader
                                 eyebrow="SAVED ROUTINES"
-                                title="Routine ทั้งหมด"
+                                title="Other Routines"
+                                showTopRule={false}
                             />
-                            <div className="mt-5 grid gap-3 tablet:grid-cols-2">
-                                {routines.map((routine) => (
+                            <div className="mt-5 border-t border-line">
+                                {otherSavedRoutines.map((routine) => (
                                     <article
                                         key={routine.id}
-                                        className="border border-line bg-surface p-4"
+                                        className="grid gap-3 border-b border-line-subtle py-4 tablet:grid-cols-[minmax(0,1fr)_auto] tablet:items-center"
                                     >
                                         <div className="flex items-start justify-between gap-3">
                                             <div>
@@ -394,7 +606,7 @@ export function PlansPage() {
                                                 </span>
                                             ) : null}
                                         </div>
-                                        <div className="mt-4 flex flex-wrap gap-2">
+                                        <div className="flex flex-wrap gap-2 tablet:justify-end">
                                             <Button
                                                 variant="quiet"
                                                 size="compact"
@@ -404,30 +616,21 @@ export function PlansPage() {
                                             >
                                                 แก้ไข
                                             </Button>
-                                            {!routine.isActive ? (
-                                                <Button
-                                                    variant="secondary"
-                                                    size="compact"
-                                                    onClick={() =>
-                                                        void activate(routine)
-                                                    }
-                                                >
-                                                    Activate
-                                                </Button>
-                                            ) : null}
-                                            {!routine.isActive ? (
-                                                <Button
-                                                    variant="destructive"
-                                                    size="compact"
-                                                    onClick={() =>
-                                                        void archiveRoutine(
-                                                            routine,
-                                                        )
-                                                    }
-                                                >
-                                                    Archive
-                                                </Button>
-                                            ) : null}
+                                            <Button
+                                                variant="secondary"
+                                                size="compact"
+                                                onClick={() => void activate(routine)}
+                                            >
+                                                Activate
+                                            </Button>
+                                            <OverflowMenu label={`เมนู Routine ${routine.name}`}>
+                                                {(close) => (
+                                                    <Button variant="quiet" fullWidth className="justify-start" onClick={() => { close(); void archiveRoutine(routine); }}>
+                                                        <Icon name="archive" className="h-5 w-5" />
+                                                        Archive
+                                                    </Button>
+                                                )}
+                                            </OverflowMenu>
                                         </div>
                                     </article>
                                 ))}
@@ -435,20 +638,12 @@ export function PlansPage() {
                         </section>
                     ) : null}
 
-                    <section>
+                    <section className={routineEditorOpen || templates.length === 0 ? "hidden" : "border-t border-line pt-6"}>
                         <SectionHeader
                             eyebrow="WORKOUT TEMPLATES"
                             title="Template ที่บันทึกไว้"
-                            action={
-                                <Link
-                                    to="/plans/templates/new"
-                                    className={buttonStyles({
-                                        variant: "secondary",
-                                    })}
-                                >
-                                    เพิ่ม Template
-                                </Link>
-                            }
+                            description={`${templates.length} Template${templates.length === 1 ? "" : "s"}`}
+                            showTopRule={false}
                         />
                         {templates.length === 0 ? (
                             <EmptyState
@@ -458,7 +653,7 @@ export function PlansPage() {
                             />
                         ) : (
                             <div className="mt-5 border-t border-line">
-                                {templates.map((template) => (
+                                {activeTemplates.map((template) => (
                                     <article
                                         key={template.id}
                                         className="grid gap-4 border-b border-line-subtle py-4 tablet:grid-cols-[minmax(0,1fr)_auto] tablet:items-center"
@@ -468,17 +663,11 @@ export function PlansPage() {
                                                 <h3 className="truncate font-semibold">
                                                     {template.name}
                                                 </h3>
-                                                {template.archivedAt ? (
-                                                    <span className="text-xs text-ink-muted">
-                                                        Archived
-                                                    </span>
-                                                ) : null}
                                             </div>
                                             <p className="mt-1 text-sm text-ink-muted">
                                                 {template.exerciseCount}{" "}
                                                 exercises · {template.setCount}{" "}
-                                                sets · revision{" "}
-                                                {template.revision}
+                                                sets · ใช้งานได้
                                             </p>
                                         </div>
                                         <div className="flex flex-wrap gap-2">
@@ -491,41 +680,44 @@ export function PlansPage() {
                                             >
                                                 แก้ไข
                                             </Link>
-                                            {!template.archivedAt ? (
-                                                <>
-                                                    <Button
-                                                        variant="secondary"
-                                                        size="compact"
-                                                        onClick={() =>
-                                                            void duplicateTemplate(
-                                                                template,
-                                                            )
-                                                        }
-                                                    >
-                                                        คัดลอก
-                                                    </Button>
-                                                    <Button
-                                                        variant="destructive"
-                                                        size="compact"
-                                                        onClick={() =>
-                                                            void archiveTemplate(
-                                                                template,
-                                                            )
-                                                        }
-                                                    >
-                                                        Archive
-                                                    </Button>
-                                                </>
-                                            ) : null}
+                                            <OverflowMenu label={`เมนู Template ${template.name}`}>
+                                                {(close) => (
+                                                    <>
+                                                        <Button variant="quiet" fullWidth className="justify-start" onClick={() => { close(); void duplicateTemplate(template); }}>
+                                                            <Icon name="copy" className="h-5 w-5" />
+                                                            คัดลอก
+                                                        </Button>
+                                                        <Button variant="destructive" fullWidth className="justify-start" onClick={() => { close(); void archiveTemplate(template); }}>
+                                                            <Icon name="archive" className="h-5 w-5" />
+                                                            Archive
+                                                        </Button>
+                                                    </>
+                                                )}
+                                            </OverflowMenu>
                                         </div>
                                     </article>
                                 ))}
+                                {archivedTemplates.length > 0 ? (
+                                    <details className="border-t border-line-subtle py-4">
+                                        <summary className="cursor-pointer text-sm font-semibold text-ink-secondary focus-visible:outline focus-visible:outline-2 focus-visible:outline-ink">
+                                            Archived Templates ({archivedTemplates.length})
+                                        </summary>
+                                        <div className="mt-3 border-t border-line-subtle">
+                                            {archivedTemplates.map((template) => (
+                                                <div key={template.id} className="flex items-center justify-between gap-3 border-b border-line-subtle py-3 text-sm">
+                                                    <span className="truncate text-ink-muted">{template.name}</span>
+                                                    <Link to={`/plans/templates/${template.id}`} className={buttonStyles({ variant: "quiet", size: "compact" })}>ดู</Link>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </details>
+                                ) : null}
                             </div>
                         )}
                     </section>
 
                     {routineEditorOpen ? (
-                        <section className="border-t border-line pt-6">
+                        <section className="pt-2">
                             <SectionHeader
                                 eyebrow="ROUTINE EDITOR"
                                 title={
@@ -534,6 +726,7 @@ export function PlansPage() {
                                         : "สร้าง Routine"
                                 }
                                 description="ใช้ปุ่มเลื่อนเพื่อจัดลำดับวันโดยไม่ต้องใช้ drag-and-drop"
+                                showTopRule={false}
                             />
                             <form
                                 className="mt-5 space-y-5"
@@ -585,10 +778,7 @@ export function PlansPage() {
                                             size="compact"
                                             type="button"
                                             onClick={addRoutineDay}
-                                            disabled={
-                                                routineDraft.days.length >=
-                                                templates.length
-                                            }
+                                            disabled={availableTemplates.length === 0}
                                         >
                                             เพิ่มวัน
                                         </Button>
@@ -703,10 +893,11 @@ export function PlansPage() {
                                                                     </option>
                                                                 ))}
                                                         </Select>
-                                                        <div className="flex gap-2">
+                                                        <div className="flex flex-wrap gap-2">
                                                             <Button
-                                                                variant="quiet"
+                                                                variant="secondary"
                                                                 size="compact"
+                                                                className="h-11 w-11 p-0"
                                                                 type="button"
                                                                 aria-label="เลื่อนวันขึ้น"
                                                                 disabled={
@@ -726,11 +917,12 @@ export function PlansPage() {
                                                                     )
                                                                 }
                                                             >
-                                                                ↑
+                                                                <Icon name="chevron-up" className="h-5 w-5" />
                                                             </Button>
                                                             <Button
-                                                                variant="quiet"
+                                                                variant="secondary"
                                                                 size="compact"
+                                                                className="h-11 w-11 p-0"
                                                                 type="button"
                                                                 aria-label="เลื่อนวันลง"
                                                                 disabled={
@@ -754,29 +946,16 @@ export function PlansPage() {
                                                                     )
                                                                 }
                                                             >
-                                                                ↓
+                                                                <Icon name="chevron-down" className="h-5 w-5" />
                                                             </Button>
-                                                            <Button
-                                                                variant="destructive"
-                                                                size="compact"
-                                                                type="button"
-                                                                onClick={() =>
-                                                                    setRoutineDraft(
-                                                                        {
-                                                                            ...routineDraft,
-                                                                            days: routineDraft.days.filter(
-                                                                                (
-                                                                                    item,
-                                                                                ) =>
-                                                                                    item.clientId !==
-                                                                                    day.clientId,
-                                                                            ),
-                                                                        },
-                                                                    )
-                                                                }
-                                                            >
-                                                                ลบ
-                                                            </Button>
+                                                            <OverflowMenu label={`เมนูวัน ${day.label || index + 1}`}>
+                                                                {(close) => (
+                                                                    <Button variant="destructive" fullWidth className="justify-start" type="button" onClick={() => { close(); setRoutineDraft({ ...routineDraft, days: routineDraft.days.filter((item) => item.clientId !== day.clientId) }); }}>
+                                                                        <Icon name="trash" className="h-5 w-5" />
+                                                                        ลบวัน
+                                                                    </Button>
+                                                                )}
+                                                            </OverflowMenu>
                                                         </div>
                                                     </li>
                                                 ),
@@ -792,7 +971,7 @@ export function PlansPage() {
                                         </p>
                                     ) : null}
                                 </div>
-                                <div className="flex flex-wrap gap-3">
+                                <div className="safe-bottom sticky bottom-0 z-10 -mx-4 mt-6 flex flex-wrap gap-3 border-t border-line bg-canvas px-4 py-4 tablet:-mx-6 tablet:px-6 desktop:-mx-8 desktop:px-8 large:-mx-12 large:px-12">
                                     <Button
                                         type="submit"
                                         disabled={savingRoutine}
@@ -805,9 +984,7 @@ export function PlansPage() {
                                         variant="quiet"
                                         type="button"
                                         onClick={() => {
-                                            setRoutineEditorOpen(false);
-                                            setEditingRoutine(null);
-                                            setRoutineDraft(blankRoutine);
+                                            cancelRoutineEditor();
                                         }}
                                     >
                                         ยกเลิก
@@ -827,255 +1004,6 @@ function numberValue(event: ChangeEvent<HTMLInputElement>) {
     return Number.isFinite(value) ? value : 0;
 }
 
-interface FilterOption {
-    code: string;
-    label: string;
-}
-
-function FilterCombobox({
-    label,
-    value,
-    options,
-    onChange,
-}: {
-    label: string;
-    value: string;
-    options: readonly FilterOption[];
-    onChange: (value: string) => void;
-}) {
-    const [open, setOpen] = useState(false);
-    const [search, setSearch] = useState("");
-    const containerRef = useRef<HTMLDivElement>(null);
-    const selected =
-        options.find((option) => option.code === value) ?? options[0];
-    const visibleOptions = options.filter((option) =>
-        option.label.toLocaleLowerCase().includes(search.toLocaleLowerCase()),
-    );
-
-    useEffect(() => {
-        if (!open) return;
-        function handleDismiss(event: MouseEvent | KeyboardEvent) {
-            if (event instanceof KeyboardEvent && event.key === "Escape") {
-                setOpen(false);
-                return;
-            }
-            if (
-                event instanceof MouseEvent &&
-                containerRef.current &&
-                !containerRef.current.contains(event.target as Node)
-            ) {
-                setOpen(false);
-            }
-        }
-        document.addEventListener("mousedown", handleDismiss);
-        document.addEventListener("keydown", handleDismiss);
-        return () => {
-            document.removeEventListener("mousedown", handleDismiss);
-            document.removeEventListener("keydown", handleDismiss);
-        };
-    }, [open]);
-
-    return (
-        <div ref={containerRef} className="relative min-w-0">
-            <span className="mb-2 block text-[13px] font-semibold tracking-[0.02em] text-ink-secondary">
-                {label}
-            </span>
-            <div className="relative">
-              <button
-                type="button"
-                aria-haspopup="listbox"
-                aria-expanded={open}
-                className={`flex min-h-11 w-full items-center gap-3 rounded-xs border border-line bg-surface px-3 text-left text-sm text-ink hover:border-line-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink ${value !== "all" ? "pr-24" : "pr-12"}`}
-                onClick={() => setOpen((current) => !current)}
-              >
-                <span className="truncate">
-                    {selected?.label ?? "เลือกค่า"}
-                </span>
-              </button>
-              <div className="absolute inset-y-0 right-0 flex items-center">
-                {value !== "all" ? (
-                  <button
-                    type="button"
-                    aria-label={`ล้างค่า${label}`}
-                    title={`ล้างค่า${label}`}
-                    className="flex h-11 w-11 items-center justify-center rounded-xs text-ink-muted hover:bg-interactive hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
-                    onClick={(event) => {
-                        event.stopPropagation();
-                        setSearch("");
-                        onChange("all");
-                        setOpen(false);
-                    }}
-                >
-                    <Icon name="close" className="h-4 w-4" />
-                  </button>
-                ) : null}
-                <button
-                  type="button"
-                  aria-label={open ? `ปิดตัวเลือก${label}` : `เปิดตัวเลือก${label}`}
-                  className="flex h-11 w-11 items-center justify-center rounded-xs text-ink-muted hover:bg-interactive hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
-                  onClick={() => setOpen((current) => !current)}
-                >
-                  <Icon name="chevron-down" className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
-            {open ? (
-                <div className="absolute left-0 top-full z-30 mt-2 w-full min-w-56 border border-line bg-canvas p-3">
-                    <div className="min-w-0">
-                        <Input
-                            label={`ค้นหา${label}`}
-                            type="search"
-                            value={search}
-                            onChange={(event) =>
-                                setSearch(event.target.value)
-                            }
-                            autoFocus
-                        />
-                    </div>
-                    <div
-                        role="listbox"
-                        aria-label={label}
-                        className="mt-3 max-h-56 overflow-y-auto border-t border-line-subtle pt-1"
-                    >
-                        {visibleOptions.length === 0 ? (
-                            <p className="py-3 text-sm text-ink-muted">
-                                ไม่พบตัวเลือก
-                            </p>
-                        ) : (
-                            visibleOptions.map((option) => (
-                                <button
-                                    key={option.code}
-                                    type="button"
-                                    role="option"
-                                    aria-selected={option.code === value}
-                                    className="flex min-h-11 w-full items-center border-b border-line-subtle px-2 text-left text-sm text-ink hover:bg-interactive focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ink"
-                                    onClick={() => {
-                                        onChange(option.code);
-                                        setSearch("");
-                                        setOpen(false);
-                                    }}
-                                >
-                                    {option.label}
-                                </button>
-                            ))
-                        )}
-                    </div>
-                </div>
-            ) : null}
-        </div>
-    );
-}
-
-function ExercisePickerFilters({
-    muscleFilter,
-    equipmentFilter,
-    onMuscleChange,
-    onEquipmentChange,
-}: {
-    muscleFilter: MuscleCode | "all";
-    equipmentFilter: EquipmentCode | "all";
-    onMuscleChange: (value: MuscleCode | "all") => void;
-    onEquipmentChange: (value: EquipmentCode | "all") => void;
-}) {
-    const [open, setOpen] = useState(false);
-    const containerRef = useRef<HTMLDivElement>(null);
-    const activeCount =
-        Number(muscleFilter !== "all") + Number(equipmentFilter !== "all");
-
-    useEffect(() => {
-        if (!open) return;
-        function handleDismiss(event: MouseEvent | KeyboardEvent) {
-            if (event instanceof KeyboardEvent && event.key === "Escape") {
-                setOpen(false);
-                return;
-            }
-            if (
-                event instanceof MouseEvent &&
-                containerRef.current &&
-                !containerRef.current.contains(event.target as Node)
-            ) {
-                setOpen(false);
-            }
-        }
-        document.addEventListener("mousedown", handleDismiss);
-        document.addEventListener("keydown", handleDismiss);
-        return () => {
-            document.removeEventListener("mousedown", handleDismiss);
-            document.removeEventListener("keydown", handleDismiss);
-        };
-    }, [open]);
-
-    return (
-        <div ref={containerRef} className="relative">
-            <Button
-                variant="secondary"
-                size="default"
-                type="button"
-                aria-haspopup="dialog"
-                aria-expanded={open}
-                aria-label={
-                    activeCount > 0
-                        ? `ตัวกรอง Exercise มี ${activeCount} รายการที่ใช้`
-                        : "เปิดตัวกรอง Exercise"
-                }
-                title="ตัวกรอง Exercise"
-                className={
-                    activeCount > 0
-                        ? "relative h-12 w-12 shrink-0 border-accent-action px-0 text-accent tablet:h-11 tablet:w-11"
-                        : "relative h-12 w-12 shrink-0 px-0 tablet:h-11 tablet:w-11"
-                }
-                onClick={() => setOpen((current) => !current)}
-            >
-                <Icon name="filter" className="h-5 w-5 shrink-0" />
-                {activeCount > 0 ? <span aria-hidden="true" className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-accent-action px-1 text-[10px] font-bold text-white">{activeCount}</span> : null}
-            </Button>
-            {open ? (
-                <div
-                    role="dialog"
-                    aria-label="ตัวกรอง Exercise"
-                    className="absolute right-0 top-full z-20 mt-2 w-[min(20rem,calc(100vw-2rem))] space-y-4 border border-line bg-canvas p-4"
-                >
-                    <FilterCombobox
-                        label="หมวดหมู่กล้ามเนื้อ"
-                        value={muscleFilter}
-                        options={[
-                            { code: "all", label: "ทุกกลุ่มกล้ามเนื้อ" },
-                            ...muscleOptions,
-                        ]}
-                        onChange={(value) =>
-                            onMuscleChange(value as MuscleCode | "all")
-                        }
-                    />
-                    <FilterCombobox
-                        label="อุปกรณ์"
-                        value={equipmentFilter}
-                        options={[
-                            { code: "all", label: "ทุกอุปกรณ์" },
-                            ...equipmentOptions,
-                        ]}
-                        onChange={(value) =>
-                            onEquipmentChange(value as EquipmentCode | "all")
-                        }
-                    />
-                    {activeCount > 0 ? (
-                        <Button
-                            variant="quiet"
-                            size="compact"
-                            type="button"
-                            onClick={() => {
-                                onMuscleChange("all");
-                                onEquipmentChange("all");
-                            }}
-                        >
-                            ล้างตัวกรอง
-                        </Button>
-                    ) : null}
-                </div>
-            ) : null}
-        </div>
-    );
-}
-
 export function TemplateEditorPage() {
     const repository = usePlanningRepository();
     const exerciseRepository = useExerciseRepository();
@@ -1092,10 +1020,17 @@ export function TemplateEditorPage() {
     const [loading, setLoading] = useState(!isNew);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState("");
+    const [exerciseErrors, setExerciseErrors] = useState<Record<string, string[]>>({});
     const [notice, setNotice] = useState("");
     const [revision, setRevision] = useState(1);
     const [dirty, setDirty] = useState(false);
     const [exercisePickerOpen, setExercisePickerOpen] = useState(false);
+    const [templateStep, setTemplateStep] = useState<"details" | "exercises" | "targets">("details");
+    const [expandedExerciseId, setExpandedExerciseId] = useState<string | null>(null);
+    const exercisePickerRef = useRef<HTMLDivElement>(null);
+    const exercisePickerTriggerRef = useRef<HTMLButtonElement>(null);
+    const exercisePickerCloseRef = useRef<HTMLButtonElement>(null);
+    const exercisePickerWasOpenRef = useRef(false);
 
     useEffect(() => {
         void exerciseRepository
@@ -1130,6 +1065,7 @@ export function TemplateEditorPage() {
                 }
                 setDraft(templateToDraft(template));
                 setRevision(template.revision);
+                setExpandedExerciseId(template.exercises[0]?.id ?? null);
             })
             .catch((loadError) => setError(errorMessage(loadError)))
             .finally(() => setLoading(false));
@@ -1142,6 +1078,40 @@ export function TemplateEditorPage() {
         window.addEventListener("beforeunload", handler);
         return () => window.removeEventListener("beforeunload", handler);
     }, [dirty]);
+
+    useEffect(() => {
+        if (!expandedExerciseId) return;
+        document.getElementById(`${expandedExerciseId}-summary`)?.focus();
+    }, [expandedExerciseId]);
+
+    useEffect(() => {
+        if (exercisePickerOpen) {
+            exercisePickerWasOpenRef.current = true;
+            exercisePickerCloseRef.current?.focus();
+        } else if (exercisePickerWasOpenRef.current) {
+            exercisePickerWasOpenRef.current = false;
+            exercisePickerTriggerRef.current?.focus();
+        }
+    }, [exercisePickerOpen]);
+
+    function trapExercisePickerFocus(event: ReactKeyboardEvent<HTMLDivElement>) {
+        if (event.key !== "Tab" || !exercisePickerRef.current) return;
+        const focusable = Array.from(
+            exercisePickerRef.current.querySelectorAll<HTMLElement>(
+                'button:not([disabled]), input:not([disabled]), select:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
+            ),
+        );
+        if (focusable.length === 0) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault();
+            last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault();
+            first.focus();
+        }
+    }
 
     const visibleExercises = useMemo(
         () =>
@@ -1158,6 +1128,7 @@ export function TemplateEditorPage() {
         setDraft(next);
         setDirty(true);
         setNotice("");
+        setExerciseErrors({});
     }
 
     function addExercise(exercise: Exercise) {
@@ -1182,6 +1153,7 @@ export function TemplateEditorPage() {
             restSeconds: 90,
         };
         updateDraft({ ...draft, exercises: [...draft.exercises, target] });
+        setExpandedExerciseId(target.clientId);
     }
 
     function updateExercise(
@@ -1199,7 +1171,14 @@ export function TemplateEditorPage() {
     async function save(event: React.FormEvent<HTMLFormElement>) {
         event.preventDefault();
         const errors = validateWorkoutTemplateDraft(draft);
+        setExerciseErrors(errors.exerciseErrors ?? {});
         if (Object.keys(errors).length > 0) {
+            if (errors.exerciseErrors && Object.keys(errors.exerciseErrors).length > 0) {
+                setTemplateStep("targets");
+                setExpandedExerciseId(Object.keys(errors.exerciseErrors)[0]);
+            } else {
+                setTemplateStep("details");
+            }
             setError(
                 errors.name ?? "กรุณาตรวจสอบจำนวนเซ็ตและเป้าหมายของแต่ละท่า",
             );
@@ -1235,11 +1214,27 @@ export function TemplateEditorPage() {
         navigate("/plans");
     }
 
+    function moveExercise(clientId: string, offset: -1 | 1) {
+        const index = draft.exercises.findIndex((exercise) => exercise.clientId === clientId);
+        const nextIndex = index + offset;
+        if (index < 0 || nextIndex < 0 || nextIndex >= draft.exercises.length) return;
+        updateDraft({ ...draft, exercises: moveItem(draft.exercises, index, nextIndex) });
+    }
+
+    function advanceTemplateStep() {
+        setTemplateStep((current) => current === "details" ? "exercises" : "targets");
+    }
+
+    function retreatTemplateStep() {
+        setTemplateStep((current) => current === "targets" ? "exercises" : "details");
+    }
+
     return (
         <PageFrame
             pageId="P-06"
+            eyebrow="P-06 · TEMPLATE EDITOR"
             title={isNew ? "สร้าง Workout Template" : "แก้ไข Workout Template"}
-            description="กำหนดเป้าหมายแบบ grouped target แล้วระบบจะขยายเป็นแถวเซ็ตจริงเมื่อบันทึก"
+            description="กำหนดชื่อ ท่าที่ใช้ และเป้าหมายการฝึกของแต่ละท่า"
             action={
                 <Button variant="secondary" onClick={cancel}>
                     กลับ Plans
@@ -1268,27 +1263,54 @@ export function TemplateEditorPage() {
                 </p>
             ) : (
                 <form onSubmit={save}>
-                    <div className="grid gap-8 desktop:grid-cols-[18rem_minmax(0,1fr)]">
+                    <nav className="mb-6 grid grid-cols-3 border-y border-line tablet:hidden" aria-label="ขั้นตอน Template">
+                        {[
+                            ["details", "01", "รายละเอียด"],
+                            ["exercises", "02", "เลือกท่า"],
+                            ["targets", "03", "กำหนดเป้าหมาย"],
+                        ].map(([step, marker, label]) => (
+                            <button
+                                key={step}
+                                type="button"
+                                className={`min-h-16 border-r border-line-subtle px-2 py-3 text-left last:border-r-0 ${templateStep === step ? "text-accent" : "text-ink-muted"}`}
+                                aria-current={templateStep === step ? "step" : undefined}
+                                onClick={() => setTemplateStep(step as typeof templateStep)}
+                            >
+                                <span className="block text-[10px] font-semibold tracking-[0.08em]">{marker}</span>
+                                <span className="mt-1 block text-xs font-semibold">{label}</span>
+                            </button>
+                        ))}
+                    </nav>
+                    {exercisePickerOpen ? <div className="fixed inset-0 z-20 bg-canvas/80 desktop:hidden" aria-hidden="true" /> : null}
+                    <div className="relative grid gap-8 desktop:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
                         <div
+                            ref={exercisePickerOpen ? exercisePickerRef : undefined}
+                            role={exercisePickerOpen ? "dialog" : undefined}
+                            aria-modal={exercisePickerOpen ? true : undefined}
+                            aria-label={exercisePickerOpen ? "Exercise Library" : undefined}
+                            onKeyDown={exercisePickerOpen ? trapExercisePickerFocus : undefined}
                             className={
                                 exercisePickerOpen
-                                    ? "fixed inset-4 z-30 w-[min(22rem,calc(100vw-2rem))] overflow-y-auto border border-line bg-canvas p-4 tablet:inset-y-4 tablet:left-20 tablet:right-auto tablet:w-80 desktop:static desktop:block desktop:w-auto desktop:overflow-visible desktop:border-0 desktop:bg-transparent desktop:p-0"
-                                    : "hidden desktop:block"
+                                ? "fixed inset-4 z-30 w-[min(22rem,calc(100vw-2rem))] overflow-y-auto border border-line bg-canvas p-4 tablet:inset-y-4 tablet:left-20 tablet:right-auto tablet:w-80 desktop:static desktop:block desktop:w-auto desktop:overflow-visible desktop:border-0 desktop:bg-transparent desktop:p-0"
+                                : "hidden desktop:block"
                             }
                         >
-                            <div className="mb-3 desktop:hidden">
+                            <div className="sticky top-0 z-10 mb-3 bg-canvas pb-3 desktop:hidden">
                                 <Button
+                                    ref={exercisePickerCloseRef}
                                     variant="quiet"
-                                    size="compact"
                                     type="button"
+                                    className="h-11 w-11 p-0"
+                                    aria-label="ปิด Library"
                                     onClick={() => setExercisePickerOpen(false)}
                                 >
-                                    ปิด Library
+                                    <Icon name="close" className="h-5 w-5" />
                                 </Button>
                             </div>
                             <SectionHeader
                                 eyebrow="EXERCISE LIBRARY"
                                 title="เลือกท่า"
+                                showTopRule={false}
                             />
                             <div className="mt-5 space-y-4">
                                 <div className="flex min-w-0 items-end gap-2">
@@ -1303,7 +1325,7 @@ export function TemplateEditorPage() {
                                             }
                                         />
                                     </div>
-                                    <ExercisePickerFilters
+                                    <ExerciseFilterPopover
                                         muscleFilter={muscleFilter}
                                         equipmentFilter={equipmentFilter}
                                         onMuscleChange={setMuscleFilter}
@@ -1368,8 +1390,9 @@ export function TemplateEditorPage() {
                             </div>
                         </div>
                         <section className="min-w-0">
-                            <div className="mb-5 desktop:hidden">
+                            <div className={`mb-5 desktop:hidden ${templateStep === "exercises" ? "" : "hidden"}`}>
                                 <Button
+                                    ref={exercisePickerTriggerRef}
                                     variant="secondary"
                                     type="button"
                                     onClick={() => setExercisePickerOpen(true)}
@@ -1379,9 +1402,11 @@ export function TemplateEditorPage() {
                             </div>
                             <SectionHeader
                                 eyebrow="TEMPLATE DETAILS"
-                                title="รายละเอียดและเป้าหมาย"
+                                title={templateStep === "exercises" ? "เลือก Exercise" : templateStep === "targets" ? "กำหนดเป้าหมาย" : "รายละเอียด Template"}
+                                showTopRule={false}
                             />
                             <div className="mt-5 space-y-5">
+                                <div className={templateStep === "details" ? "space-y-5" : "hidden tablet:block tablet:space-y-5"}>
                                 <Input
                                     label="ชื่อ Template"
                                     required
@@ -1403,7 +1428,8 @@ export function TemplateEditorPage() {
                                         })
                                     }
                                 />
-                                <div className="border-t border-line pt-5">
+                                </div>
+                                <div className={`border-t border-line pt-5 ${templateStep === "details" ? "hidden tablet:block" : ""}`}>
                                     <div className="flex items-center justify-between gap-3">
                                         <h3 className="font-semibold">
                                             Exercises ({draft.exercises.length})
@@ -1426,7 +1452,7 @@ export function TemplateEditorPage() {
                                                         key={exercise.clientId}
                                                         className="min-w-0 border border-line bg-surface p-4"
                                                     >
-                                                        <div className="flex items-start justify-between gap-3">
+                                                        <div className="flex min-w-0 items-start justify-between gap-3">
                                                             <div className="min-w-0">
                                                                 <p className="text-xs text-ink-muted">
                                                                     {String(
@@ -1437,11 +1463,12 @@ export function TemplateEditorPage() {
                                                                         "0",
                                                                     )}
                                                                 </p>
-                                                                <h4 className="mt-1 truncate font-semibold">
-                                                                    {
-                                                                        exercise.exerciseName
-                                                                    }
-                                                                </h4>
+                                                                <button id={`${exercise.clientId}-summary`} type="button" className="mt-1 block max-w-full truncate text-left font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-ink" aria-expanded={expandedExerciseId === exercise.clientId} aria-controls={`${exercise.clientId}-targets`} onClick={() => setExpandedExerciseId(expandedExerciseId === exercise.clientId ? null : exercise.clientId)}>
+                                                                    {exercise.exerciseName}
+                                                                </button>
+                                                                <p className="mt-1 text-xs tabular-nums text-ink-muted">
+                                                                    {exercise.setCount} sets · {exercise.repsMin}–{exercise.repsMax} reps · พัก {exercise.restSeconds}s
+                                                                </p>
                                                                 {exercise.exerciseArchivedAt ? (
                                                                     <p className="mt-1 text-sm text-warning">
                                                                         Exercise
@@ -1457,30 +1484,28 @@ export function TemplateEditorPage() {
                                                                     </p>
                                                                 ) : null}
                                                             </div>
-                                                            <Button
-                                                                variant="destructive"
-                                                                size="compact"
-                                                                type="button"
-                                                                onClick={() =>
-                                                                    updateDraft(
-                                                                        {
-                                                                            ...draft,
-                                                                            exercises:
-                                                                                draft.exercises.filter(
-                                                                                    (
-                                                                                        item,
-                                                                                    ) =>
-                                                                                        item.clientId !==
-                                                                                        exercise.clientId,
-                                                                                ),
-                                                                        },
-                                                                    )
-                                                                }
-                                                            >
-                                                                ลบ
-                                                            </Button>
+                                                            <div className="flex shrink-0 gap-2">
+                                                                <Button variant="secondary" size="compact" className="h-11 w-11 p-0" type="button" aria-label={`เลื่อน ${exercise.exerciseName} ขึ้น`} disabled={index === 0} onClick={() => moveExercise(exercise.clientId, -1)}>
+                                                                    <Icon name="chevron-up" className="h-5 w-5" />
+                                                                </Button>
+                                                                <Button variant="secondary" size="compact" className="h-11 w-11 p-0" type="button" aria-label={`เลื่อน ${exercise.exerciseName} ลง`} disabled={index === draft.exercises.length - 1} onClick={() => moveExercise(exercise.clientId, 1)}>
+                                                                    <Icon name="chevron-down" className="h-5 w-5" />
+                                                                </Button>
+                                                                <Button variant="destructive" size="compact" className="h-11 w-11 p-0" type="button" aria-label={`ลบ ${exercise.exerciseName}`} onClick={() => updateDraft({ ...draft, exercises: draft.exercises.filter((item) => item.clientId !== exercise.clientId) })}>
+                                                                    <Icon name="trash" className="h-5 w-5" />
+                                                                </Button>
+                                                            </div>
                                                         </div>
-                                                        <div className="mt-4 grid gap-4 grid-cols-2 tablet:grid-cols-4">
+                                                        {exerciseErrors[exercise.clientId]?.length ? (
+                                                            <p role="alert" className="mt-3 border-l-2 border-error pl-3 text-sm text-error">
+                                                                {exerciseErrors[exercise.clientId].join(" · ")}
+                                                            </p>
+                                                        ) : null}
+                                                        <div id={`${exercise.clientId}-targets`} className={`mt-4 grid gap-4 grid-cols-2 tablet:grid-cols-4 ${expandedExerciseId === exercise.clientId ? "" : "hidden tablet:grid"}`}>
+                                                            <fieldset className="col-span-2 grid grid-cols-2 gap-4 tablet:col-span-4 tablet:grid-cols-4">
+                                                                <legend className="col-span-2 mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-ink-muted tablet:col-span-4">
+                                                                    Volume
+                                                                </legend>
                                                             <Input
                                                                 label="Sets"
                                                                 type="number"
@@ -1567,6 +1592,11 @@ export function TemplateEditorPage() {
                                                                     )
                                                                 }
                                                             />
+                                                            </fieldset>
+                                                            <fieldset className="col-span-2 grid grid-cols-2 gap-4 tablet:col-span-4 tablet:grid-cols-4">
+                                                                <legend className="col-span-2 mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-ink-muted tablet:col-span-4">
+                                                                    Intensity
+                                                                </legend>
                                                             <Input
                                                                 label="น้ำหนักเป้าหมาย"
                                                                 type="number"
@@ -1575,9 +1605,6 @@ export function TemplateEditorPage() {
                                                                 value={
                                                                     exercise.targetWeightValue ??
                                                                     ""
-                                                                }
-                                                                unit={
-                                                                    exercise.targetWeightUnit
                                                                 }
                                                                 onChange={(
                                                                     event,
@@ -1679,7 +1706,7 @@ export function TemplateEditorPage() {
                                                                 }
                                                             />
                                                             <Select
-                                                                label="หน่วย"
+                                                                label="หน่วยน้ำหนัก"
                                                                 value={
                                                                     exercise.targetWeightUnit
                                                                 }
@@ -1706,6 +1733,7 @@ export function TemplateEditorPage() {
                                                                     LB
                                                                 </option>
                                                             </Select>
+                                                            </fieldset>
                                                         </div>
                                                     </article>
                                                 ),
@@ -1716,13 +1744,33 @@ export function TemplateEditorPage() {
                             </div>
                         </section>
                     </div>
-                    <div className="mt-8 flex flex-wrap gap-3 border-t border-line pt-5">
+                    <div className="mt-8 hidden flex-wrap gap-3 border-t border-line pt-5 tablet:flex">
                         <Button type="submit" disabled={saving}>
                             {saving ? "กำลังบันทึก…" : "บันทึก Template"}
                         </Button>
                         <Button variant="quiet" type="button" onClick={cancel}>
                             ยกเลิก
                         </Button>
+                    </div>
+                    <div className="safe-bottom sticky bottom-0 z-10 -mx-4 mt-6 flex gap-2 border-t border-line bg-canvas px-4 py-3 tablet:hidden">
+                        {templateStep !== "details" ? (
+                            <Button variant="quiet" type="button" className="flex-1" onClick={retreatTemplateStep}>
+                                ย้อนกลับ
+                            </Button>
+                        ) : (
+                            <Button variant="quiet" type="button" className="flex-1" onClick={cancel}>
+                                ยกเลิก
+                            </Button>
+                        )}
+                        {templateStep === "targets" ? (
+                            <Button type="submit" className="flex-1" disabled={saving}>
+                                {saving ? "กำลังบันทึก…" : "บันทึก Template"}
+                            </Button>
+                        ) : (
+                            <Button type="button" className="flex-1" onClick={advanceTemplateStep}>
+                                ถัดไป
+                            </Button>
+                        )}
                     </div>
                 </form>
             )}

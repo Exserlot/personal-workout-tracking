@@ -1,9 +1,7 @@
-import { Icon } from "../../../components/icons/Icon";
-import { Button } from "../../../components/ui/Button";
 import { Input } from "../../../components/ui/Input";
 import { Select } from "../../../components/ui/Select";
+import { ExerciseFilterPopover } from "./ExerciseFilterPopover";
 import {
-  defaultExerciseQuery,
   equipmentOptions,
   muscleOptions,
   type ExerciseQuery,
@@ -50,44 +48,56 @@ function FilterSelects({ query, onChange }: ExerciseFiltersProps) {
   );
 }
 
-export function ExerciseFilters({ query, onChange }: ExerciseFiltersProps) {
-  const hasFilters =
-    query.search !== defaultExerciseQuery.search ||
-    query.muscleCode !== defaultExerciseQuery.muscleCode ||
-    query.equipmentCode !== defaultExerciseQuery.equipmentCode ||
-    query.status !== defaultExerciseQuery.status;
+function SearchField({ query, onChange }: ExerciseFiltersProps) {
+  return (
+    <Input
+      label="ค้นหาชื่อท่าฝึก"
+      type="search"
+      value={query.search}
+      placeholder="เช่น Bench Press"
+      aria-controls="exercise-results"
+      clearButtonLabel="ล้างคำค้นหา"
+      onClear={() => onChange({ ...query, search: "" })}
+      onChange={(event) => onChange({ ...query, search: event.target.value })}
+    />
+  );
+}
 
+export function ExerciseFilters({ query, onChange }: ExerciseFiltersProps) {
   return (
     <div className="space-y-4">
-      <Input
-        label="ค้นหาชื่อท่าฝึก"
-        type="search"
-        value={query.search}
-        placeholder="เช่น Bench Press"
-        aria-controls="exercise-results"
-        onChange={(event) => onChange({ ...query, search: event.target.value })}
-      />
-
-      <details className="group border-y border-line tablet:hidden">
-        <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink">
-          <span className="flex items-center gap-2"><Icon name="filter" className="h-4 w-4" />ตัวกรอง</span>
-          <Icon name="chevron-down" className="h-4 w-4 text-ink-muted transition-transform group-open:rotate-180" />
-        </summary>
-        <div className="space-y-4 border-t border-line-subtle py-4">
-          <FilterSelects query={query} onChange={onChange} />
+      <div className="flex min-w-0 items-end gap-2 tablet:hidden">
+        <div className="min-w-0 flex-1">
+          <SearchField query={query} onChange={onChange} />
         </div>
-      </details>
-
-      <div className="hidden gap-4 tablet:grid tablet:grid-cols-3 desktop:grid-cols-1">
-        <FilterSelects query={query} onChange={onChange} />
+        <ExerciseFilterPopover
+          muscleFilter={query.muscleCode}
+          equipmentFilter={query.equipmentCode}
+          statusFilter={query.status}
+          onMuscleChange={(value) => onChange({ ...query, muscleCode: value })}
+          onEquipmentChange={(value) => onChange({ ...query, equipmentCode: value })}
+          onStatusChange={(value) => onChange({ ...query, status: value })}
+        />
       </div>
 
-      {hasFilters ? (
-        <Button variant="quiet" className="w-full tablet:w-auto desktop:w-full" onClick={() => onChange(defaultExerciseQuery)}>
-          <Icon name="close" className="h-4 w-4" />
-          ล้างตัวกรอง
-        </Button>
-      ) : null}
+      <div className="hidden min-w-0 items-end gap-2 tablet:flex desktop:hidden">
+        <div className="min-w-0 flex-1">
+          <SearchField query={query} onChange={onChange} />
+        </div>
+        <ExerciseFilterPopover
+          muscleFilter={query.muscleCode}
+          equipmentFilter={query.equipmentCode}
+          statusFilter={query.status}
+          onMuscleChange={(value) => onChange({ ...query, muscleCode: value })}
+          onEquipmentChange={(value) => onChange({ ...query, equipmentCode: value })}
+          onStatusChange={(value) => onChange({ ...query, status: value })}
+        />
+      </div>
+
+      <div className="hidden space-y-4 desktop:block">
+        <SearchField query={query} onChange={onChange} />
+        <FilterSelects query={query} onChange={onChange} />
+      </div>
     </div>
   );
 }

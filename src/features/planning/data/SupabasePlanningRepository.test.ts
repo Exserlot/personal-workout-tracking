@@ -32,6 +32,17 @@ const templateRow = {
   }],
 };
 
+const routineRow = {
+  id: "routine-1",
+  name: "Push Pull",
+  weekly_frequency_target: 3,
+  next_workout_index: 0,
+  is_active: false,
+  revision: 2,
+  archived_at: null,
+  routine_days: [],
+};
+
 class FakeClient implements SupabaseDataClient {
   public calls: Array<{ method: string; path: string; body?: unknown }> = [];
   constructor(private readonly responses: unknown[]) {}
@@ -88,5 +99,17 @@ describe("SupabasePlanningRepository", () => {
     const result = repository.archiveTemplate("template-1", 1);
     await expect(result).rejects.toEqual(expect.any(PlanningRepositoryError));
     await expect(result).rejects.toMatchObject({ code: "conflict" });
+  });
+
+  it("deactivates a routine through the transactional RPC and reloads it", async () => {
+    const client = new FakeClient(["routine-1", [routineRow]]);
+    const result = await new SupabasePlanningRepository(client).deactivateRoutine("routine-1", 1);
+
+    expect(result.isActive).toBe(false);
+    expect(client.calls[0]).toMatchObject({
+      method: "POST",
+      path: "rpc/planning_deactivate_routine",
+      body: { p_id: "routine-1", p_expected_revision: 1 },
+    });
   });
 });

@@ -364,6 +364,17 @@ export class SupabasePlanningRepository implements PlanningRepository {
     }
   }
 
+  async deactivateRoutine(id: string, expectedRevision: number): Promise<Routine> {
+    try {
+      const deactivatedId = rpcId(await this.client.request<unknown>({ method: "POST", path: "rpc/planning_deactivate_routine", body: { p_id: id, p_expected_revision: expectedRevision } }));
+      const routine = await this.getRoutine(deactivatedId);
+      if (!routine) throw new PlanningRepositoryError("unknown", "ปิดใช้งาน Routine แล้วแต่โหลดข้อมูลกลับไม่สำเร็จ");
+      return routine;
+    } catch (error) {
+      throw mapError(error, "ปิดใช้งาน Routine ไม่สำเร็จ");
+    }
+  }
+
   async archiveRoutine(id: string, expectedRevision: number): Promise<void> {
     try {
       await this.client.request({ method: "POST", path: "rpc/planning_archive_routine", body: { p_id: id, p_expected_revision: expectedRevision } });
@@ -381,6 +392,8 @@ export class SupabasePlanningRepository implements PlanningRepository {
       if (!template) throw new PlanningRepositoryError("not-found", "ไม่พบ Template ของ Routine ที่เปิดใช้งาน");
       return {
         routineId: active.id,
+        routineRevision: active.revision,
+        routineDayId: nextDay.id,
         routineName: active.name,
         weeklyFrequencyTarget: active.weeklyFrequencyTarget,
         nextWorkoutIndex: active.nextWorkoutIndex,
@@ -407,6 +420,7 @@ class UnconfiguredPlanningRepository implements PlanningRepository {
   createRoutine(): Promise<Routine> { return Promise.reject(this.error); }
   updateRoutine(): Promise<Routine> { return Promise.reject(this.error); }
   activateRoutine(): Promise<Routine> { return Promise.reject(this.error); }
+  deactivateRoutine(): Promise<Routine> { return Promise.reject(this.error); }
   archiveRoutine(): Promise<void> { return Promise.reject(this.error); }
   getActiveRoutinePreview(): Promise<ActiveRoutinePreview | null> { return Promise.reject(this.error); }
 }

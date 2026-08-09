@@ -33,6 +33,7 @@ export interface PlanningRepository {
   createRoutine(draft: RoutineDraft): Promise<Routine>;
   updateRoutine(id: string, expectedRevision: number, draft: RoutineDraft): Promise<Routine>;
   activateRoutine(id: string, expectedRevision: number): Promise<Routine>;
+  deactivateRoutine(id: string, expectedRevision: number): Promise<Routine>;
   archiveRoutine(id: string, expectedRevision: number): Promise<void>;
   getActiveRoutinePreview(): Promise<ActiveRoutinePreview | null>;
 }

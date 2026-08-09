@@ -110,6 +110,8 @@ export interface RoutineDraft {
 
 export interface ActiveRoutinePreview {
   routineId: string;
+  routineRevision: number;
+  routineDayId: string;
   routineName: string;
   weeklyFrequencyTarget: number;
   nextWorkoutIndex: number;

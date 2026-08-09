@@ -90,4 +90,31 @@ pnpm exec supabase test db
 
 The same catalog is included in `supabase/seed.sql` for fresh local databases. Stable IDs make the seed safe to rerun; conflicting starter names fail instead of overwriting another exercise, and unchanged metadata does not increment `version`.
 
+### M-03 workout execution
+
+Migration `202608080008_workout_execution.sql` adds the device registry, workout
+session snapshot tables, owner-device checks, and transactional RPCs for start,
+set commands, finish, and discard. Migration
+`202608080009_active_session_plan_guard.sql` blocks changes to an active Routine
+while its session is running. Apply both with the normal local reset/push flow:
+
+```powershell
+pnpm exec supabase db reset
+pnpm exec supabase db lint --local
+pnpm exec supabase test db
+```
+
+The browser registers a stable installation id before Start/Resume. The
+`fitness-workout-device-id` value is not a secret and may be removed to simulate
+a new device. Start, set mutations, Finish, and Discard require a live
+authenticated connection and are confirmed by the RPC response. IndexedDB keeps
+only the last acknowledged session, input drafts, current exercise, and the
+device-local rest timer; it is not an offline mutation queue in M-03.
+
+To verify the flow, login with the local owner, activate a Routine, open Today,
+start its next Template, complete a set, refresh, and finish. A second browser
+installation can read the active snapshot but cannot mutate it. Template edits
+after Start must not change the session snapshot. Run `pnpm test:e2e` for the
+mobile execution and refresh coverage.
+
 เพิ่ม migration ใหม่แบบ timestamped ใต้ `supabase/migrations/`; ห้ามแก้ migration ที่ถูกใช้งานแล้ว Seed catalog ใน `supabase/seed.sql` ต้องรันซ้ำได้ Mutation RPC อนุญาตเฉพาะ `authenticated`; RLS ตรวจว่า `owner_user_id = auth.uid()`

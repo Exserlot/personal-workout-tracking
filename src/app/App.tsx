@@ -15,15 +15,19 @@ import { AuthProvider } from "../features/auth/AuthProvider";
 import { ProtectedRoute } from "../features/auth/ProtectedRoute";
 import { PlanningRepositoryProvider } from "../features/planning/PlanningRepositoryProvider";
 import { createSupabasePlanningRepository } from "../features/planning/data/SupabasePlanningRepository";
+import { WorkoutRepositoryProvider } from "../features/workout/WorkoutRepositoryProvider";
+import { createSupabaseWorkoutRepository } from "../features/workout/data/SupabaseWorkoutRepository";
 
 const exerciseRepository = createSupabaseExerciseRepository();
 const planningRepository = createSupabasePlanningRepository();
+const workoutRepository = createSupabaseWorkoutRepository();
 
 export function App() {
   return (
     <AuthProvider>
       <ExerciseRepositoryProvider repository={exerciseRepository}>
         <PlanningRepositoryProvider repository={planningRepository}>
+          <WorkoutRepositoryProvider repository={workoutRepository}>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route element={<ProtectedRoute />}>
@@ -35,6 +39,7 @@ export function App() {
                 <Route path="plans" element={<PlansPage />} />
                 <Route path="plans/templates/:templateId" element={<TemplateEditorPage />} />
                 <Route path="workout/active" element={<ActiveWorkoutPage />} />
+                <Route path="workout/complete/:sessionId" element={<CompletionSummaryPage />} />
                 <Route path="workout/complete" element={<CompletionSummaryPage />} />
                 <Route path="history" element={<HistoryPage />} />
                 <Route path="history/:sessionId" element={<HistoryDetailPage />} />
@@ -45,6 +50,7 @@ export function App() {
               </Route>
             </Route>
           </Routes>
+          </WorkoutRepositoryProvider>
         </PlanningRepositoryProvider>
       </ExerciseRepositoryProvider>
     </AuthProvider>

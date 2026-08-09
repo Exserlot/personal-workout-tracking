@@ -23,9 +23,7 @@ function secondaryMuscles(exercise: Exercise) {
 function StatusLabel({ exercise }: { exercise: Exercise }) {
   return exercise.archivedAt ? (
     <span className="font-semibold text-warning">Archived</span>
-  ) : (
-    <span className="text-ink-muted">Active</span>
-  );
+  ) : null;
 }
 
 function ExercisePagination({
@@ -48,7 +46,7 @@ function ExercisePagination({
   return (
     <nav
       aria-label="แบ่งหน้ารายการท่าฝึก"
-      className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4"
+      className="flex flex-wrap items-center justify-between gap-3 pt-4"
     >
       <p className="text-sm text-ink-muted">
         แสดง {startIndex + 1}–{endIndex} จาก {total} รายการ
@@ -121,7 +119,7 @@ export function ExerciseResults({ exercises }: { exercises: Exercise[] }) {
       <div className="hidden min-w-0 desktop:block">
         <table className="w-full table-fixed border-collapse text-left">
           <caption className="sr-only">รายการท่าฝึก</caption>
-          <thead className="border-y border-line bg-surface text-xs font-semibold tracking-[0.025em] text-ink-secondary">
+          <thead className="border-b border-line bg-surface text-xs font-semibold tracking-[0.025em] text-ink-secondary">
             <tr>
               <th scope="col" className="w-[30%] px-3 py-3">ท่าฝึก</th>
               <th scope="col" className="w-[17%] px-3 py-3">กล้ามเนื้อหลัก</th>
@@ -132,13 +130,14 @@ export function ExerciseResults({ exercises }: { exercises: Exercise[] }) {
           </thead>
           <tbody>
             {items.map((exercise) => (
-              <tr key={exercise.id} className="border-b border-line-subtle hover:bg-interactive">
+              <tr key={exercise.id} className="border-b border-line-subtle">
                 <th scope="row" className="px-3 py-3 font-semibold">
                   <Link
                     to={`/exercises/${exercise.id}`}
-                    className="break-words underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+                    className="inline-flex items-center gap-2 break-words underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
                   >
                     {exercise.name}
+                    <Icon name="chevron-right" className="h-4 w-4 shrink-0 text-ink-muted" />
                   </Link>
                 </th>
                 <td className="break-words px-3 py-3 text-sm text-ink-secondary">{getMuscleLabel(exercise.primaryMuscleCode)}</td>

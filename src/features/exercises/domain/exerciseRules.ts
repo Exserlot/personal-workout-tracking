@@ -1,4 +1,5 @@
 import {
+  defaultExerciseQuery,
   equipmentOptions,
   muscleOptions,
   type Exercise,
@@ -121,4 +122,17 @@ export function paginateExercises(
 
 export function hasExerciseValidationErrors(errors: ExerciseValidationErrors) {
   return Object.keys(errors).length > 0;
+}
+
+export function hasActiveExerciseFilters(query: ExerciseQuery) {
+  return (
+    query.search !== defaultExerciseQuery.search ||
+    query.muscleCode !== defaultExerciseQuery.muscleCode ||
+    query.equipmentCode !== defaultExerciseQuery.equipmentCode ||
+    query.status !== defaultExerciseQuery.status
+  );
+}
+
+export function clearExerciseFilters(): ExerciseQuery {
+  return { ...defaultExerciseQuery };
 }

@@ -1,8 +1,19 @@
 import type {
   GroupedExerciseTargetDraft,
   RoutineDraft,
+  Routine,
   WorkoutTemplateDraft,
+  WorkoutTemplateSummary,
 } from "./planning";
+
+export type PlanningActionKey = "create-template" | "create-routine" | "activate-routine";
+
+export interface PlanningAction {
+  key: PlanningActionKey;
+  label: string;
+  variant: "primary" | "secondary";
+  target?: "templates" | "routines";
+}
 
 export interface PlanningValidationErrors {
   name?: string;
@@ -81,4 +92,38 @@ export function moveItem<T>(items: T[], fromIndex: number, toIndex: number): T[]
 export function clampNextWorkoutIndex(index: number, dayCount: number) {
   if (dayCount <= 0) return 0;
   return Math.min(Math.max(0, index), dayCount - 1);
+}
+
+export function eligibleTemplates(templates: WorkoutTemplateSummary[]) {
+  return templates.filter((template) => !template.archivedAt && template.exerciseCount > 0 && template.setCount > 0);
+}
+
+export function otherRoutines(routines: Routine[]) {
+  return routines.filter((routine) => !routine.isActive && !routine.archivedAt);
+}
+
+export function plansPageActions(
+  templates: WorkoutTemplateSummary[],
+  routines: Routine[],
+): PlanningAction[] {
+  const hasEligibleTemplate = eligibleTemplates(templates).length > 0;
+  const active = routines.some((routine) => routine.isActive);
+  const hasSavedRoutine = routines.some((routine) => !routine.archivedAt);
+  if (!hasEligibleTemplate) return [{ key: "create-template", label: "สร้าง Template", variant: "primary" }];
+  if (!active && hasSavedRoutine) {
+    return [
+      { key: "activate-routine", label: "เลือก Routine เพื่อเปิดใช้งาน", variant: "primary", target: "routines" },
+      { key: "create-routine", label: "สร้าง Routine", variant: "secondary" },
+    ];
+  }
+  if (!active) {
+    return [
+      { key: "create-routine", label: "สร้าง Routine", variant: "primary" },
+      { key: "create-template", label: "สร้าง Template", variant: "secondary" },
+    ];
+  }
+  return [
+    { key: "create-template", label: "สร้าง Template", variant: "primary" },
+    { key: "create-routine", label: "สร้าง Routine", variant: "secondary" },
+  ];
 }

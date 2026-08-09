@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { Icon } from "../../../components/icons/Icon";
 import { Button } from "../../../components/ui/Button";
 
 interface ArchiveExerciseDialogProps {
@@ -46,8 +47,9 @@ export function ArchiveExerciseDialog({
         </p>
         {error ? <p role="alert" className="mt-4 border-l-2 border-error pl-3 text-sm text-error">{error}</p> : null}
         <div className="mt-6 flex flex-col-reverse gap-3 tablet:flex-row tablet:justify-end">
-          <Button variant="secondary" disabled={loading} onClick={onCancel}>ยกเลิก</Button>
+          <Button variant="secondary" disabled={loading} onClick={onCancel}><Icon name="close" className="h-4 w-4" />ยกเลิก</Button>
           <Button variant="destructive" disabled={loading} onClick={onConfirm}>
+            <Icon name="archive" className="h-4 w-4" />
             {loading ? "กำลัง Archive…" : "ยืนยัน Archive"}
           </Button>
         </div>

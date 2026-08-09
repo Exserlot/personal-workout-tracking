@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { Icon } from "../../../components/icons/Icon";
 import { Button } from "../../../components/ui/Button";
 import {
   getEquipmentLabel,
@@ -60,7 +61,8 @@ function ExercisePagination({
           disabled={page === 1}
           aria-label="ไปหน้าก่อนหน้า"
         >
-          ก่อนหน้า
+          <Icon name="chevron-left" className="h-4 w-4" />
+          <span>ก่อนหน้า</span>
         </Button>
         <span aria-live="polite" className="min-w-20 text-center text-sm font-semibold text-ink">
           หน้า {page} / {pageCount}
@@ -72,7 +74,8 @@ function ExercisePagination({
           disabled={page === pageCount}
           aria-label="ไปหน้าถัดไป"
         >
-          ถัดไป
+          <span>ถัดไป</span>
+          <Icon name="chevron-right" className="h-4 w-4" />
         </Button>
       </div>
     </nav>
@@ -109,7 +112,7 @@ export function ExerciseResults({ exercises }: { exercises: Exercise[] }) {
                   {sourceLabel(exercise)}{exercise.archivedAt ? " · Archived" : ""}
                 </p>
               </div>
-              <span aria-hidden="true" className="text-xl text-ink-muted">→</span>
+              <Icon name="chevron-right" className="h-5 w-5 text-ink-muted" />
             </Link>
           </li>
         ))}

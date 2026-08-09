@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { Icon } from "../components/icons/Icon";
 import { PageFrame } from "../components/layout/PageFrame";
 import { Button } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
@@ -82,7 +83,7 @@ export function ExerciseLibraryPage() {
       eyebrow="P-03 · EXERCISE LIBRARY"
       title="คลังท่าฝึก"
       description="ค้นหา Starter Exercises และจัดการ Custom Exercises สำหรับใช้ในแผนการฝึก"
-      action={<Link to="/exercises/new" className={buttonStyles()}>สร้างท่าฝึก</Link>}
+      action={<Link to="/exercises/new" className={buttonStyles()}><Icon name="plus" className="h-4 w-4" />สร้างท่าฝึก</Link>}
     >
       {notice ? (
         <div role="status" className="mb-8 border-l-2 border-success bg-surface px-4 py-3">
@@ -113,7 +114,7 @@ export function ExerciseLibraryPage() {
                 marker="ERROR"
                 title="เปิดคลังท่าฝึกไม่ได้"
                 description={errorMessage}
-                action={<Button variant="secondary" onClick={() => setReloadKey((current) => current + 1)}>ลองอีกครั้ง</Button>}
+                action={<Button variant="secondary" onClick={() => setReloadKey((current) => current + 1)}><Icon name="refresh" className="h-4 w-4" />ลองอีกครั้ง</Button>}
               />
             ) : null}
             {loadState === "success" && exercises.length > 0 ? (
@@ -130,7 +131,7 @@ export function ExerciseLibraryPage() {
                 }
                 action={
                   hasActiveFilters(query) ? (
-                    <Button variant="secondary" onClick={() => setQuery(defaultExerciseQuery)}>ล้างตัวกรอง</Button>
+                    <Button variant="secondary" onClick={() => setQuery(defaultExerciseQuery)}><Icon name="close" className="h-4 w-4" />ล้างตัวกรอง</Button>
                   ) : (
                     <Link to="/exercises/new" className={buttonStyles()}>สร้างท่าฝึก</Link>
                   )
@@ -253,7 +254,7 @@ export function ExerciseEditorPage() {
           ? "เพิ่ม Custom Exercise ด้วย controlled muscle และ equipment taxonomy"
           : "ดู metadata และจัดการ lifecycle ของ Exercise โดยไม่กระทบ Workout History"
       }
-      action={<Link to="/exercises" className={buttonStyles({ variant: "quiet" })}>กลับไปคลัง</Link>}
+      action={<Link to="/exercises" className={buttonStyles({ variant: "quiet" })}><Icon name="arrow" className="h-4 w-4 rotate-180" />กลับไปคลัง</Link>}
     >
       {loadState === "loading" ? (
         <div role="status" className="max-w-3xl space-y-5" aria-label="กำลังโหลดรายละเอียดท่าฝึก">
@@ -293,6 +294,7 @@ export function ExerciseEditorPage() {
                   Archive จะซ่อนท่านี้จากรายการใช้งาน แต่ไม่ลบข้อมูลย้อนหลัง
                 </p>
                 <Button variant="destructive" className="mt-5 w-full" onClick={() => setArchiveOpen(true)}>
+                  <Icon name="archive" className="h-4 w-4" />
                   Archive Exercise
                 </Button>
               </div>

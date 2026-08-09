@@ -1,3 +1,4 @@
+import { Icon } from "../../../components/icons/Icon";
 import { Button } from "../../../components/ui/Button";
 import { Input } from "../../../components/ui/Input";
 import { Select } from "../../../components/ui/Select";
@@ -69,8 +70,8 @@ export function ExerciseFilters({ query, onChange }: ExerciseFiltersProps) {
 
       <details className="group border-y border-line tablet:hidden">
         <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink">
-          <span>ตัวกรอง</span>
-          <span aria-hidden="true" className="text-ink-muted group-open:rotate-45">+</span>
+          <span className="flex items-center gap-2"><Icon name="filter" className="h-4 w-4" />ตัวกรอง</span>
+          <Icon name="chevron-down" className="h-4 w-4 text-ink-muted transition-transform group-open:rotate-180" />
         </summary>
         <div className="space-y-4 border-t border-line-subtle py-4">
           <FilterSelects query={query} onChange={onChange} />
@@ -83,6 +84,7 @@ export function ExerciseFilters({ query, onChange }: ExerciseFiltersProps) {
 
       {hasFilters ? (
         <Button variant="quiet" className="w-full tablet:w-auto desktop:w-full" onClick={() => onChange(defaultExerciseQuery)}>
+          <Icon name="close" className="h-4 w-4" />
           ล้างตัวกรอง
         </Button>
       ) : null}

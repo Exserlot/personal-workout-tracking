@@ -26,7 +26,7 @@ import {
 
 type RecordValue = Record<string, unknown>;
 
-const SESSION_SELECT = [
+export const WORKOUT_SESSION_SELECT = [
   "id",
   "owner_device_id",
   "source_type",
@@ -44,6 +44,7 @@ const SESSION_SELECT = [
   "notes",
   "version",
   "edited_at",
+  "deleted_at",
   "workout_session_exercises(id,source_template_exercise_id,source_exercise_id,sequence_no,exercise_name_snapshot,equipment_code_snapshot,notes,workout_session_exercise_muscles(role,sequence_no,muscle_name_snapshot),workout_session_sets(id,source_template_set_id,sequence_no,set_kind_code,is_to_failure,target_reps_min,target_reps_max,target_weight_value,target_weight_unit,target_weight_kg,target_effort_metric,target_effort_value,target_rest_seconds,actual_weight_value,actual_weight_unit,actual_weight_kg,actual_reps,actual_effort_metric,actual_effort_value,actual_rest_seconds,status,completed_at,notes))",
 ].join(",");
 
@@ -151,7 +152,7 @@ function parseExercise(value: unknown): SessionExercise {
   };
 }
 
-function parseSession(value: unknown): WorkoutSession {
+export function parseWorkoutSession(value: unknown): WorkoutSession {
   const row = record(value, "session");
   const sourceType = stringValue(row.source_type, "source_type");
   const status = stringValue(row.status, "status");
@@ -175,6 +176,7 @@ function parseSession(value: unknown): WorkoutSession {
     notes: typeof row.notes === "string" ? row.notes : "",
     version: integer(row.version, "version", 1) as number,
     editedAt: stringValue(row.edited_at, "edited_at", true),
+    deletedAt: stringValue(row.deleted_at, "deleted_at", true),
     exercises: array(row.workout_session_exercises, "workout_session_exercises").map(parseExercise).sort((a, b) => a.sequence - b.sequence),
   };
 }
@@ -278,9 +280,9 @@ export class SupabaseWorkoutRepository implements WorkoutRepository {
   constructor(private readonly client: SupabaseDataClient) {}
 
   private async getSessionById(sessionId: string): Promise<WorkoutSession | null> {
-    const params = new URLSearchParams({ select: SESSION_SELECT, id: `eq.${sessionId}`, limit: "1" });
+    const params = new URLSearchParams({ select: WORKOUT_SESSION_SELECT, id: `eq.${sessionId}`, limit: "1" });
     const rows = parseRows(await this.client.request<unknown[]>({ method: "GET", path: `workout_sessions?${params.toString()}` }));
-    return rows.length === 0 ? null : parseSession(rows[0]);
+    return rows.length === 0 ? null : parseWorkoutSession(rows[0]);
   }
 
   async registerDevice(deviceId: string, label = "This browser"): Promise<WorkoutDevice> {
@@ -316,9 +318,9 @@ export class SupabaseWorkoutRepository implements WorkoutRepository {
   async getActiveSession(deviceId: string): Promise<WorkoutSession | null> {
     void deviceId;
     try {
-      const params = new URLSearchParams({ select: SESSION_SELECT, status: "eq.ACTIVE", deleted_at: "is.null", order: "started_at.desc", limit: "1" });
+      const params = new URLSearchParams({ select: WORKOUT_SESSION_SELECT, status: "eq.ACTIVE", deleted_at: "is.null", order: "started_at.desc", limit: "1" });
       const rows = parseRows(await this.client.request<unknown[]>({ method: "GET", path: `workout_sessions?${params.toString()}` }));
-      return rows.length === 0 ? null : parseSession(rows[0]);
+      return rows.length === 0 ? null : parseWorkoutSession(rows[0]);
     } catch (error) {
       throw mapError(error, "โหลด Active Workout ไม่สำเร็จ");
     }

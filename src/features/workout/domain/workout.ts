@@ -72,6 +72,7 @@ export interface WorkoutSession {
   notes: string;
   version: number;
   editedAt: string | null;
+  deletedAt?: string | null;
   exercises: SessionExercise[];
 }
 

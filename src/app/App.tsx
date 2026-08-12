@@ -18,10 +18,13 @@ import { createSupabasePlanningRepository } from "../features/planning/data/Supa
 import { WorkoutRepositoryProvider } from "../features/workout/WorkoutRepositoryProvider";
 import { createSupabaseWorkoutRepository } from "../features/workout/data/SupabaseWorkoutRepository";
 import { WorkoutSyncProvider } from "../features/workout/WorkoutSyncProvider";
+import { HistoryRepositoryProvider } from "../features/history/HistoryRepositoryProvider";
+import { createSupabaseHistoryRepository } from "../features/history/data/SupabaseHistoryRepository";
 
 const exerciseRepository = createSupabaseExerciseRepository();
 const planningRepository = createSupabasePlanningRepository();
 const workoutRepository = createSupabaseWorkoutRepository();
+const historyRepository = createSupabaseHistoryRepository();
 
 export function App() {
   return (
@@ -30,6 +33,7 @@ export function App() {
         <PlanningRepositoryProvider repository={planningRepository}>
           <WorkoutRepositoryProvider repository={workoutRepository}>
           <WorkoutSyncProvider>
+          <HistoryRepositoryProvider repository={historyRepository}>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route element={<ProtectedRoute />}>
@@ -52,6 +56,7 @@ export function App() {
               </Route>
             </Route>
           </Routes>
+          </HistoryRepositoryProvider>
           </WorkoutSyncProvider>
           </WorkoutRepositoryProvider>
         </PlanningRepositoryProvider>

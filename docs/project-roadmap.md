@@ -1,10 +1,10 @@
 # Personal Workout Tracking Web App — Project Roadmap Tracker
 
-**สถานะล่าสุด:** 12 สิงหาคม 2026
+**สถานะล่าสุด:** 13 สิงหาคม 2026
 
 **Baseline:** commit `847960f`
 
-**Current focus:** M-05A — Workout History
+**Current focus:** M-05B — Basic Progress
 
 **MVP target:** M-01 ถึง M-07 ผ่าน Definition of Done
 
@@ -54,16 +54,16 @@ MVP ครอบคลุม Exercise Library, Workout Templates, Routine, Today
 | M-02 Exercise Library & Planning | `DONE` | Exercise → Template → Routine → Activate ทำงานจริง | M-01 |
 | M-03 Today & Online Workout Execution | `DONE` | Start/Resume → Log → Finish/Discard ทำงานแบบ online-first | M-02 |
 | M-04 Offline Reliability & Ownership | `DONE` | Offline Set mutations, idempotent Session lifecycle, conflict recovery, remote abandon และ P-13 sync visibility | M-03 |
-| M-05A Workout History | `PENDING` | Completed Session list/detail/edit/delete | M-03, M-04 contracts |
+| M-05A Workout History | `DONE` | Completed Session list/detail/edit/delete | M-03, M-04 contracts |
 | M-05B Basic Progress | `PENDING` | Volume, e1RM, PR และ Exercise trends | M-05A |
 | M-06 Responsive & Accessibility QA | `PARTIAL` | Cross-device and accessibility release quality | M-02–M-05 |
 | M-07 Release Hardening | `PENDING` | Production deploy, security, backup และ observability | M-01–M-06 |
 
 ### งานสามลำดับถัดไป
 
-1. สร้าง Workout History list/detail/edit/delete ใน M-05A
-2. คำนวณ Basic Progress, volume, e1RM, PR และ exercise trends ใน M-05B
-3. ปิด responsive/accessibility QA และ release hardening ใน M-06–M-07
+1. คำนวณ Basic Progress, volume, e1RM, PR และ exercise trends ใน M-05B
+2. ปิด responsive/accessibility QA และ release hardening ใน M-06–M-07
+3. เตรียม production deploy, backup และ observability ให้พร้อมใช้งานจริงใน M-07
 
 ## 4. M-00 — Product and Design Definition
 
@@ -236,18 +236,18 @@ MVP ครอบคลุม Exercise Library, Workout Templates, Routine, Today
 
 ## 9. M-05A — Workout History
 
-**Status:** `PENDING` — หน้า P-09/P-10 ปัจจุบันเป็น static placeholder
+**Status:** `DONE` — P-09/P-10 เชื่อม Supabase และรองรับดู/แก้ไข/ลบ Completed Session แบบ online
 
-- [ ] เพิ่ม History domain/repository แยกจาก Workout Execution commands
-- [ ] List Completed Sessions ใหม่ไปเก่า พร้อม pagination/filter ตามช่วงเวลา
-- [ ] Session Detail แสดง snapshot, exercises, sets, notes และ edit marker
-- [ ] Retrospective Edit ใช้ validation เดียวกับ Workout sets
-- [ ] Soft delete พร้อมผลกระทบต่อ Progress และ confirmation
-- [ ] Archived Exercises ยังแสดง snapshot name เดิม
-- [ ] History mutation online-only และใช้ expected revision
-- [ ] Loading, empty, updating, error, conflict และ success states
-- [ ] Responsive desktop table/mobile labeled list
-- [ ] Repository, database และ E2E tests
+- [x] เพิ่ม History domain/repository แยกจาก Workout Execution commands
+- [x] List Completed Sessions ใหม่ไปเก่า พร้อม pagination/filter ตามช่วงเวลา
+- [x] Session Detail แสดง snapshot, exercises, sets, notes และ edit marker
+- [x] Retrospective Edit ใช้ validation เดียวกับ Workout sets
+- [x] Soft delete พร้อมผลกระทบต่อ Progress และ confirmation
+- [x] Archived Exercises ยังแสดง snapshot name เดิม
+- [x] History mutation online-only และใช้ expected revision
+- [x] Loading, empty, updating, error, conflict และ success states
+- [x] Responsive desktop table/mobile labeled list
+- [x] Repository, database และ E2E tests
 
 **Exit criteria:** Completed Session ทุกค่าตรวจย้อนกลับได้; edit/delete ไม่กระทบ Template และ soft-deleted Session หายจาก History ปกติ
 
@@ -315,7 +315,7 @@ MVP ครอบคลุม Exercise Library, Workout Templates, Routine, Today
 | FR-AW-01–07 | UF-05–07 | P-07, P-08 | M-03 | `DONE` online |
 | FR-AW-08–09 | UF-06, UF-08, UF-09 | P-07, P-13 | M-04 | `DONE` |
 | FR-AW-10–11 | UF-07 | P-02, P-07, P-08 | M-03, M-04 | `DONE` |
-| FR-HI-01–05 | UF-10 | P-09, P-10 | M-05A | `PENDING` |
+| FR-HI-01–05 | UF-10 | P-09, P-10 | M-05A | `DONE` |
 | FR-PR-01–05 | UF-11 | P-11, P-12 | M-05B | `PENDING` |
 | FR-ST-01–03 | UF-06, UF-08, UF-09 | P-07, P-13 | M-03–M-05 | `PARTIAL` |
 | NFR-01–02, 09 | ทุก core flow | P-01–P-13 | M-01, M-06 | `PARTIAL` |

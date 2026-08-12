@@ -23,9 +23,9 @@ import {
 } from "../features/exercises/domain/exercise";
 import { filterExercises } from "../features/exercises/domain/exerciseRules";
 import { useWorkoutRepository } from "../features/workout/WorkoutRepositoryContext";
+import { useAuth } from "../features/auth/AuthContext";
 import { getDeviceId } from "../features/workout/data/deviceIdentity";
 import {
-    clearSessionCache,
     loadLatestSessionCache,
     loadSessionCache,
     saveSessionCache,
@@ -52,11 +52,15 @@ import {
 } from "../features/workout/domain/workoutRules";
 import {
     WorkoutRepositoryError,
+    completionSummaryFromSession,
     type PreviousExerciseValues,
     type SessionSet,
     type WorkoutRepository,
     type WorkoutSession,
 } from "../features/workout/domain/workout";
+import { useWorkoutSync } from "../features/workout/WorkoutSyncContext";
+import type { WorkoutSyncSnapshot } from "../features/workout/data/WorkoutSyncCoordinator";
+import { enqueueOfflineWorkoutCommand, listSyncOperations, WorkoutQueueError } from "../features/workout/data/workoutSyncStore";
 
 type LoadStatus = "loading" | "ready" | "error";
 const DEFAULT_TIMER: WorkoutTimerCache = {
@@ -240,10 +244,14 @@ function sessionCache(
     drafts: Record<string, WorkoutDraftValue>,
     currentExerciseId: string | null,
     timer: WorkoutTimerCache,
+    userId: string,
+    acknowledgedSession: WorkoutSession = session,
 ): ActiveSessionCache {
     return {
         sessionId: session.id,
+        userId,
         session,
+        acknowledgedSession,
         draftValues: drafts,
         currentExerciseId,
         timer,
@@ -275,15 +283,25 @@ function initialDrafts(
 }
 
 export function ActiveWorkoutPage() {
+    const auth = useAuth();
     const repository = useWorkoutRepository();
     const exerciseRepository = useExerciseRepository();
     const navigate = useNavigate();
     const deviceId = useMemo(() => getDeviceId(), []);
+    const userId = auth.session?.user.id ?? "";
+    const syncCoordinator = useWorkoutSync();
     const [session, setSession] = useState<WorkoutSession | null>(null);
     const sessionRef = useRef<WorkoutSession | null>(null);
     const [status, setStatus] = useState<LoadStatus>("loading");
     const [error, setError] = useState("");
     const [offlineReadOnly, setOfflineReadOnly] = useState(false);
+    const [isOnline, setIsOnline] = useState(
+        typeof navigator === "undefined" ? true : navigator.onLine,
+    );
+    const [syncSnapshot, setSyncSnapshot] = useState<WorkoutSyncSnapshot>(
+        syncCoordinator.getSnapshot(),
+    );
+    const [pendingSetIds, setPendingSetIds] = useState<Set<string>>(new Set());
     const [currentExerciseId, setCurrentExerciseId] = useState<string | null>(
         null,
     );
@@ -302,6 +320,33 @@ export function ActiveWorkoutPage() {
     const [availableExercises, setAvailableExercises] = useState<Exercise[]>(
         [],
     );
+
+    useEffect(() => {
+        const handleOnline = () => setIsOnline(true);
+        const handleOffline = () => setIsOnline(false);
+        window.addEventListener("online", handleOnline);
+        window.addEventListener("offline", handleOffline);
+        const unsubscribe = syncCoordinator.subscribe(() => {
+            setSyncSnapshot({ ...syncCoordinator.getSnapshot() });
+            void Promise.all([
+                listSyncOperations(userId),
+                sessionRef.current
+                    ? loadSessionCache(sessionRef.current.id, userId)
+                    : Promise.resolve(null),
+            ]).then(([operations, cached]) => {
+                setPendingSetIds(new Set(operations.flatMap((operation) => "setId" in operation.command ? [operation.command.setId] : [])));
+                if (cached && sessionRef.current?.id === cached.session.id) {
+                    sessionRef.current = cached.session;
+                    setSession(cached.session);
+                }
+            }).catch(() => undefined);
+        });
+        return () => {
+            window.removeEventListener("online", handleOnline);
+            window.removeEventListener("offline", handleOffline);
+            unsubscribe();
+        };
+    }, [syncCoordinator, userId]);
 
     const acceptSession = useCallback(
         async (next: WorkoutSession, cached?: ActiveSessionCache | null) => {
@@ -348,10 +393,17 @@ export function ActiveWorkoutPage() {
             setTimer(nextTimer);
             setStatus("ready");
             await saveSessionCache(
-                sessionCache(next, nextDrafts, nextCurrent, nextTimer),
+                sessionCache(
+                    next,
+                    nextDrafts,
+                    nextCurrent,
+                    nextTimer,
+                    userId,
+                    cached?.acknowledgedSession ?? next,
+                ),
             ).catch(() => undefined);
         },
-        [repository],
+        [repository, userId],
     );
 
     const load = useCallback(async () => {
@@ -366,12 +418,15 @@ export function ActiveWorkoutPage() {
                 setStatus("ready");
                 return;
             }
+            const cached = await loadSessionCache(active.id, userId).catch(() => null);
+            const queued = await listSyncOperations(userId, active.id).catch(() => []);
             await acceptSession(
-                active,
-                await loadSessionCache(active.id).catch(() => null),
+                queued.length > 0 && cached ? cached.session : active,
+                cached,
             );
+            syncCoordinator.start(active.id);
         } catch (loadError) {
-            const cached = await loadLatestSessionCache().catch(() => null);
+            const cached = await loadLatestSessionCache(userId).catch(() => null);
             if (cached) {
                 sessionRef.current = cached.session;
                 setSession(cached.session);
@@ -387,7 +442,7 @@ export function ActiveWorkoutPage() {
                 );
                 setPreviousValues({});
                 setTimer(cached.timer);
-                setOfflineReadOnly(true);
+                setOfflineReadOnly(!cached.userId || cached.userId !== userId);
                 setStatus("ready");
                 setError(
                     "กำลังแสดงข้อมูลล่าสุดแบบอ่านอย่างเดียว เนื่องจากยังเชื่อมต่อ Supabase ไม่ได้",
@@ -401,7 +456,7 @@ export function ActiveWorkoutPage() {
                 setStatus("error");
             }
         }
-    }, [acceptSession, deviceId, repository]);
+    }, [acceptSession, deviceId, repository, syncCoordinator, userId]);
 
     useEffect(() => {
         void load();
@@ -415,6 +470,20 @@ export function ActiveWorkoutPage() {
         return () => window.clearInterval(interval);
     }, [timer.status, timer.endsAt]);
 
+    const ownerActive = Boolean(
+        session &&
+        !offlineReadOnly &&
+        session.ownerDeviceId === deviceId &&
+        session.status === "ACTIVE",
+    );
+    const syncBlocked = syncSnapshot.status === "conflict" || syncSnapshot.status === "authorization";
+    const canQueueSetMutation = ownerActive && !syncBlocked;
+    const canUseOnlineMutation = canQueueSetMutation
+        && isOnline
+        && syncSnapshot.pendingCount === 0
+        && pendingSetIds.size === 0;
+    const readOnly = !canUseOnlineMutation;
+
     const persistCache = useCallback(
         (
             nextSession: WorkoutSession,
@@ -422,11 +491,22 @@ export function ActiveWorkoutPage() {
             nextCurrent = currentExerciseId,
             nextTimer = timer,
         ) => {
-            void saveSessionCache(
-                sessionCache(nextSession, nextDrafts, nextCurrent, nextTimer),
-            );
+            void loadSessionCache(nextSession.id, userId).then((cached) => {
+                const acknowledged = cached?.acknowledgedSession ?? nextSession;
+                const serverAdvanced = nextSession.version > acknowledged.version;
+                return saveSessionCache(
+                    sessionCache(
+                        serverAdvanced ? nextSession : cached?.session ?? nextSession,
+                        nextDrafts,
+                        nextCurrent,
+                        nextTimer,
+                        userId,
+                        serverAdvanced ? nextSession : acknowledged,
+                    ),
+                );
+            }).catch(() => undefined);
         },
-        [currentExerciseId, timer],
+        [currentExerciseId, timer, userId],
     );
 
     const applyCommand = useCallback(
@@ -435,7 +515,7 @@ export function ActiveWorkoutPage() {
             setId?: string,
         ) => {
             const current = sessionRef.current;
-            if (!current || offlineReadOnly) return null;
+            if (!current || readOnly) return null;
             setBusyAction(true);
             if (setId) setBusySetId(setId);
             try {
@@ -461,7 +541,7 @@ export function ActiveWorkoutPage() {
                 setBusySetId(null);
             }
         },
-        [deviceId, offlineReadOnly, persistCache, repository],
+        [deviceId, persistCache, readOnly, repository],
     );
 
     const currentExercise =
@@ -483,12 +563,6 @@ export function ActiveWorkoutPage() {
             (set) => set.id === expandedSetId && set.status === "PENDING",
         ) ?? currentExercise?.sets.find((set) => set.status === "PENDING");
     const remainingSeconds = remainingTimerSeconds(timer, clock);
-    const readOnly =
-        offlineReadOnly ||
-        !session ||
-        session.ownerDeviceId !== deviceId ||
-        session.status !== "ACTIVE";
-
     function updateDraft(
         setId: string,
         field: keyof SetDraftValue,
@@ -522,21 +596,45 @@ export function ActiveWorkoutPage() {
         if (sessionRef.current) persistCache(sessionRef.current, next);
     }
 
+    async function enqueueWorkoutCommand(command: Parameters<WorkoutRepository["applyIdempotentCommand"]>[0]["command"]) {
+        const current = sessionRef.current;
+        if (!current || !canQueueSetMutation) return null;
+        const cached = await loadSessionCache(current.id, userId);
+        const fallbackCache = cached ?? sessionCache(current, draftsRef.current, currentExerciseId, timer, userId);
+        const result = await enqueueOfflineWorkoutCommand({
+            cache: fallbackCache,
+            userId,
+            deviceId,
+            command,
+        });
+        sessionRef.current = result.cache.session;
+        setSession(result.cache.session);
+        syncCoordinator.start(result.cache.session.id);
+        return result.cache.session;
+    }
+
     async function saveSet(set: SessionSet) {
+        if (!sessionRef.current || !canQueueSetMutation) return;
         const draft = draftsRef.current[set.id] ?? draftFromSet(set);
         const validation = validateSetDraft(draft);
         setErrors((current) => ({ ...current, [set.id]: validation }));
         if (Object.keys(validation).length > 0) return;
         const values = commandValues(draft);
-        const next = await applyCommand(
-            {
-                action:
-                    set.status === "COMPLETED" ? "edit_set" : "complete_set",
+        let next: WorkoutSession | null = null;
+        setBusyAction(true);
+        setBusySetId(set.id);
+        try {
+            next = await enqueueWorkoutCommand({
+                action: set.status === "COMPLETED" ? "edit_set" : "complete_set",
                 setId: set.id,
                 ...values,
-            },
-            set.id,
-        );
+            });
+        } catch (saveError) {
+            setError(saveError instanceof WorkoutRepositoryError ? saveError.message : saveError instanceof WorkoutQueueError ? "บันทึกในเครื่องไม่สำเร็จ กรุณาลองใหม่" : "บันทึก Set ไม่สำเร็จ");
+        } finally {
+            setBusyAction(false);
+            setBusySetId(null);
+        }
         if (next && set.status !== "COMPLETED") {
             const nextTimer = timerAfterComplete(set.targetRestSeconds || 90);
             setTimer(nextTimer);
@@ -553,10 +651,18 @@ export function ActiveWorkoutPage() {
     }
 
     async function skipSet(set: SessionSet) {
-        const next = await applyCommand(
-            { action: "skip_set", setId: set.id },
-            set.id,
-        );
+        if (!canQueueSetMutation) return;
+        setBusyAction(true);
+        setBusySetId(set.id);
+        let next: WorkoutSession | null = null;
+        try {
+            next = await enqueueWorkoutCommand({ action: "skip_set", setId: set.id });
+        } catch (skipError) {
+            setError(skipError instanceof WorkoutQueueError ? "บันทึกการข้ามเซ็ตในเครื่องไม่สำเร็จ" : "ข้ามเซ็ตไม่สำเร็จ");
+        } finally {
+            setBusyAction(false);
+            setBusySetId(null);
+        }
         if (!next) return;
         const nextExercise = next.exercises.find(
             (exercise) => exercise.id === currentExerciseId,
@@ -568,24 +674,32 @@ export function ActiveWorkoutPage() {
     }
 
     async function addSet() {
-        if (!currentExercise || readOnly) return;
+        if (!currentExercise || !canQueueSetMutation) return;
         const last = [...currentExercise.sets]
             .reverse()
             .find((set) => set.status === "COMPLETED");
         const template = currentExercise.sets.at(-1);
         if (!template) return;
-        const next = await applyCommand({
-            action: "add_set",
-            sessionExerciseId: currentExercise.id,
-            setId: crypto.randomUUID(),
-            sequence: currentExercise.sets.length + 1,
-            kind: template.kind === "WARM_UP" ? "WARM_UP" : "WORKING",
-            targetRepsMin: template.targetRepsMin ?? 8,
-            targetRepsMax: template.targetRepsMax ?? 10,
-            targetWeight: template.targetWeight,
-            targetEffort: template.targetEffort,
-            targetRestSeconds: template.targetRestSeconds,
-        });
+        setBusyAction(true);
+        let next: WorkoutSession | null = null;
+        try {
+            next = await enqueueWorkoutCommand({
+                action: "add_set",
+                sessionExerciseId: currentExercise.id,
+                setId: crypto.randomUUID(),
+                sequence: currentExercise.sets.length + 1,
+                kind: template.kind === "WARM_UP" ? "WARM_UP" : "WORKING",
+                targetRepsMin: template.targetRepsMin ?? 8,
+                targetRepsMax: template.targetRepsMax ?? 10,
+                targetWeight: template.targetWeight,
+                targetEffort: template.targetEffort,
+                targetRestSeconds: template.targetRestSeconds,
+            });
+        } catch (addError) {
+            setError(addError instanceof WorkoutQueueError ? "เพิ่มเซ็ตในเครื่องไม่สำเร็จ" : "เพิ่มเซ็ตไม่สำเร็จ");
+        } finally {
+            setBusyAction(false);
+        }
         if (next) {
             const added = next.exercises
                 .find((exercise) => exercise.id === currentExercise.id)
@@ -600,6 +714,23 @@ export function ActiveWorkoutPage() {
                 setExpandedSetId(added.id);
                 persistCache(next, nextDrafts);
             }
+        }
+    }
+
+    async function deleteSet(set: SessionSet) {
+        if (!canQueueSetMutation || !window.confirm("ลบเซ็ตนี้ออกจาก Session หรือไม่?")) return;
+        setBusyAction(true);
+        setBusySetId(set.id);
+        try {
+            const next = await enqueueWorkoutCommand({ action: "delete_set", setId: set.id });
+            if (!next) return;
+            const nextExercise = next.exercises.find((exercise) => exercise.id === currentExerciseId);
+            setExpandedSetId(nextExercise?.sets.find((candidate) => candidate.status === "PENDING")?.id ?? nextExercise?.sets[0]?.id ?? null);
+        } catch (deleteError) {
+            setError(deleteError instanceof WorkoutQueueError ? "ไม่สามารถลบเซ็ตสุดท้ายหรือเซ็ตที่ไม่มีอยู่ได้" : "ลบเซ็ตไม่สำเร็จ");
+        } finally {
+            setBusyAction(false);
+            setBusySetId(null);
         }
     }
 
@@ -628,7 +759,7 @@ export function ActiveWorkoutPage() {
 
     async function finish() {
         const current = sessionRef.current;
-        if (!current || readOnly) return;
+        if (!current || !canQueueSetMutation) return;
         const pending = current.exercises.reduce(
             (count, exercise) =>
                 count +
@@ -659,13 +790,12 @@ export function ActiveWorkoutPage() {
             return;
         setBusyAction(true);
         try {
-            const completed = await repository.finishSession(
-                current.id,
-                deviceId,
-                current.version,
-            );
-            await clearSessionCache(current.id).catch(() => undefined);
-            navigate(`/workout/complete/${completed.id}`);
+            const next = await enqueueWorkoutCommand({ action: "finish_session" });
+            if (!next) throw new WorkoutRepositoryError("unknown", "Finish Workout ไม่สำเร็จ");
+            const stoppedTimer = { ...DEFAULT_TIMER };
+            setTimer(stoppedTimer);
+            await saveSessionCache(sessionCache(next, draftsRef.current, currentExerciseId, stoppedTimer, userId, (await loadSessionCache(next.id, userId))?.acknowledgedSession ?? current));
+            navigate(`/workout/complete/${next.id}`);
         } catch (finishError) {
             setError(
                 finishError instanceof WorkoutRepositoryError
@@ -681,7 +811,7 @@ export function ActiveWorkoutPage() {
         const current = sessionRef.current;
         if (
             !current ||
-            readOnly ||
+            !canQueueSetMutation ||
             !window.confirm(
                 "Discard Workout นี้หรือไม่? ข้อมูลจะไม่ถูกนำไปคำนวณ Progress และ Routine จะไม่เลื่อน",
             )
@@ -689,12 +819,11 @@ export function ActiveWorkoutPage() {
             return;
         setBusyAction(true);
         try {
-            await repository.discardSession(
-                current.id,
-                deviceId,
-                current.version,
-            );
-            await clearSessionCache(current.id).catch(() => undefined);
+            const next = await enqueueWorkoutCommand({ action: "discard_session" });
+            if (!next) throw new WorkoutRepositoryError("unknown", "Discard Workout ไม่สำเร็จ");
+            const stoppedTimer = { ...DEFAULT_TIMER };
+            setTimer(stoppedTimer);
+            await saveSessionCache(sessionCache(next, draftsRef.current, currentExerciseId, stoppedTimer, userId, (await loadSessionCache(next.id, userId))?.acknowledgedSession ?? current));
             navigate("/today");
         } catch (discardError) {
             setError(
@@ -795,6 +924,23 @@ export function ActiveWorkoutPage() {
                 >
                     Offline / read-only: เชื่อมต่อ Supabase เพื่อแก้ไข Session
                 </p>
+            ) : null}
+            {!offlineReadOnly ? (
+                <div
+                    data-testid="sync-status"
+                    role={syncSnapshot.status === "conflict" ? "alert" : "status"}
+                    className={`mx-auto flex max-w-content flex-wrap items-center justify-between gap-3 border-b px-4 py-3 text-sm tablet:px-6 desktop:px-8 large:px-12 ${syncSnapshot.status === "conflict" ? "border-error text-error" : "border-line text-ink-secondary"}`}
+                >
+                    <span>
+                        {!isOnline || syncSnapshot.status === "offline" ? "Offline" : syncSnapshot.status === "authorization" ? "ต้องเข้าสู่ระบบเพื่อซิงก์" : syncSnapshot.status === "syncing" ? "Syncing" : syncSnapshot.status === "conflict" ? "Conflict" : syncSnapshot.pendingCount > 0 ? "Saved locally" : "Synced"}
+                        {syncSnapshot.pendingCount > 0 ? ` · ${syncSnapshot.pendingCount} รายการรอซิงก์` : ""}
+                    </span>
+                    {syncSnapshot.status === "conflict" ? (
+                        <Link to={`/settings?session=${encodeURIComponent(session.id)}`} className={buttonStyles({ variant: "quiet", size: "compact" })}>
+                            ตรวจสอบ Conflict
+                        </Link>
+                    ) : null}
+                </div>
             ) : null}
             <div className="page-grid mx-auto max-w-content px-4 pt-6 tablet:px-6 tablet:pt-8 desktop:px-8 large:px-12">
                 {session.exercises.length > 0 ? (
@@ -965,7 +1111,9 @@ export function ActiveWorkoutPage() {
                                         errors={errors[set.id] ?? {}}
                                         expanded={expandedSetId === set.id}
                                         isBodyweight={currentExercise.equipmentCode === "bodyweight"}
-                                        readOnly={readOnly}
+                                        readOnly={!canQueueSetMutation}
+                                        kindReadOnly={!canUseOnlineMutation}
+                                        pendingSync={pendingSetIds.has(set.id)}
                                         busy={busySetId === set.id}
                                         onToggle={() => setExpandedSetId(
                                             expandedSetId === set.id ? null : set.id,
@@ -975,20 +1123,7 @@ export function ActiveWorkoutPage() {
                                         }
                                         onSave={() => void saveSet(set)}
                                         onSkip={() => void skipSet(set)}
-                                        onDelete={() => {
-                                            if (
-                                                window.confirm(
-                                                    "ลบเซ็ตนี้ออกจาก Session หรือไม่?",
-                                                )
-                                            )
-                                                void applyCommand(
-                                                    {
-                                                        action: "delete_set",
-                                                        setId: set.id,
-                                                    },
-                                                    set.id,
-                                                );
-                                        }}
+                                        onDelete={() => void deleteSet(set)}
                                         onKindChange={(kind) =>
                                             void applyCommand(
                                                 {
@@ -1006,7 +1141,7 @@ export function ActiveWorkoutPage() {
                                 <Button
                                     data-testid="add-set"
                                     variant="secondary"
-                                    disabled={readOnly || busyAction}
+                                    disabled={!canQueueSetMutation || busyAction}
                                     onClick={() => void addSet()}
                                 >
                                     <Icon name="plus" className="h-5 w-5" />
@@ -1060,7 +1195,7 @@ export function ActiveWorkoutPage() {
                             <RestTimer
                         timer={timer}
                         remainingSeconds={remainingSeconds}
-                        readOnly={readOnly}
+                        readOnly={!canQueueSetMutation}
                         onPause={() => {
                             const next = pauseTimer(timer);
                             setTimer(next);
@@ -1095,14 +1230,13 @@ export function ActiveWorkoutPage() {
                             />
                     <Divider className="my-5" />
                     <p className="text-sm leading-6 text-ink-secondary">
-                        Complete Set จะส่งข้อมูลให้ server ยืนยันก่อนเริ่มพัก
-                        Timer
+                        Complete, Edit, Skip, Add, Delete, Finish และ Discard จะบันทึกในเครื่องก่อนและซิงก์อัตโนมัติ ส่วนการแก้โครงสร้างอื่นต้องออนไลน์
                     </p>
                     <div className="mt-5 space-y-2">
                         <Button
                             variant="secondary"
                             fullWidth
-                            disabled={readOnly || busyAction}
+                            disabled={!canQueueSetMutation || busyAction}
                             onClick={() => void finish()}
                         >
                             Finish Workout
@@ -1110,7 +1244,7 @@ export function ActiveWorkoutPage() {
                         <Button
                             variant="quiet"
                             fullWidth
-                            disabled={readOnly || busyAction}
+                            disabled={!canQueueSetMutation || busyAction}
                             onClick={() => void discard()}
                         >
                             Discard
@@ -1126,7 +1260,7 @@ export function ActiveWorkoutPage() {
                     variant="accent"
                     size="large"
                     fullWidth
-                    disabled={readOnly || busyAction || !pendingSet}
+                    disabled={!canQueueSetMutation || busyAction || !pendingSet}
                     data-testid="primary-set-action"
                     onClick={() => {
                         if (pendingSet) void saveSet(pendingSet);
@@ -1151,11 +1285,14 @@ export function ActiveWorkoutPage() {
 
 export function CompletionSummaryPage() {
     const repository = useWorkoutRepository();
+    const auth = useAuth();
+    const syncCoordinator = useWorkoutSync();
     const { sessionId } = useParams();
     const [summary, setSummary] = useState<Awaited<
         ReturnType<typeof repository.getCompletionSummary>
     > | null>(null);
     const [error, setError] = useState("");
+    const [syncSnapshot, setSyncSnapshot] = useState<WorkoutSyncSnapshot>(syncCoordinator.getSnapshot());
     useEffect(() => {
         if (!sessionId) return;
         void repository
@@ -1169,7 +1306,19 @@ export function CompletionSummaryPage() {
                 ),
             );
     }, [repository, sessionId]);
-    if (error)
+    useEffect(() => {
+        if (!sessionId) return;
+        syncCoordinator.start(sessionId);
+        const unsubscribe = syncCoordinator.subscribe(() => setSyncSnapshot({ ...syncCoordinator.getSnapshot() }));
+        void loadSessionCache(sessionId, auth.session?.user.id).then((cached) => {
+            if (cached?.session.status === "COMPLETED") {
+                setSummary((current) => current ?? completionSummaryFromSession(cached.session));
+                setError("");
+            }
+        }).catch(() => undefined);
+        return unsubscribe;
+    }, [auth.session?.user.id, sessionId, syncCoordinator]);
+    if (error && !summary)
         return (
             <PageFrame
                 pageId="P-08"
@@ -1204,6 +1353,12 @@ export function CompletionSummaryPage() {
                 </Link>
             }
         >
+            {syncSnapshot.pendingCount > 0 || syncSnapshot.status === "synced" ? (
+                <p role="status" className="mb-5 border-l-2 border-warning pl-4 text-sm text-warning">
+                    {syncSnapshot.pendingCount === 0 ? "Synced" : syncSnapshot.status === "offline" ? "Offline · บันทึก Summary ไว้ในเครื่องแล้ว" : syncSnapshot.status === "conflict" ? "Conflict · ข้อมูล local ยังไม่ถูกลบ" : syncSnapshot.status === "syncing" ? "Syncing…" : "Saved locally · กำลังรอการซิงก์"}
+                    {syncSnapshot.status === "conflict" ? <Link className="ml-3 underline" to={`/settings?session=${encodeURIComponent(sessionId ?? "")}`}>ตรวจสอบ Conflict</Link> : null}
+                </p>
+            ) : null}
             <div className="page-grid">
                 <div className="col-span-4 grid grid-cols-2 gap-x-4 tablet:col-span-8 tablet:grid-cols-4 desktop:col-span-12">
                     <StatBlock

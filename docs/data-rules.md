@@ -170,6 +170,8 @@ not-created → ACTIVE → COMPLETED
 - Version/owner-device conflict stops the affected Session queue; no last-write-wins or automatic field merge
 - Network response with older version cannot overwrite newer local pending state
 - Logout must not erase pending operations automatically
+- Conflict recovery never uses last-write-wins or automatic merge; local data is archived before using the server copy or explicit remote abandon
+- Remote abandon changes only an authenticated user's `ACTIVE` Session to `DISCARDED`, does not advance Routine, and is idempotent by operation ID
 - Mutation receipt retention must exceed the supported offline retry window
 - Snapshot Start retries from a consistent source revision; it never mixes children from two Template revisions
 

@@ -289,7 +289,7 @@ test.describe("Today experience", () => {
     await page.goto("/@vite/client");
     await page.evaluate(async (session) => {
       await new Promise<void>((resolve, reject) => {
-        const request = indexedDB.open("personal-workout-tracker", 2);
+        const request = indexedDB.open("personal-workout-tracker", 4);
         request.onupgradeneeded = () => {
           if (!request.result.objectStoreNames.contains("active-session-cache")) {
             request.result.createObjectStore("active-session-cache", { keyPath: "sessionId" });

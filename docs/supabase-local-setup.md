@@ -117,4 +117,23 @@ installation can read the active snapshot but cannot mutate it. Template edits
 after Start must not change the session snapshot. Run `pnpm test:e2e` for the
 mobile execution and refresh coverage.
 
+### M-04 offline recovery
+
+Migration `202608120003_workout_conflict_recovery.sql` adds the authenticated
+`workout_remote_abandon_session` RPC. It is receipt-backed and changes an
+Active Session to Discarded without advancing a Routine; it does not require
+the requesting browser to be the owner device. The browser archives its local
+copy before clearing a conflict queue. P-13 displays queue health, conflict
+comparison, recovery archive export, and logout warnings. Apply and verify the
+complete local stack with:
+
+```powershell
+pnpm exec supabase db reset
+pnpm exec supabase db lint --local
+pnpm exec supabase test db
+```
+
+Recovery JSON exports contain only local workout data and operation metadata;
+they never include access tokens or service-role credentials.
+
 เพิ่ม migration ใหม่แบบ timestamped ใต้ `supabase/migrations/`; ห้ามแก้ migration ที่ถูกใช้งานแล้ว Seed catalog ใน `supabase/seed.sql` ต้องรันซ้ำได้ Mutation RPC อนุญาตเฉพาะ `authenticated`; RLS ตรวจว่า `owner_user_id = auth.uid()`

@@ -13,7 +13,10 @@ import type {
 import { PlanningRepositoryError } from "../features/planning/data/PlanningRepository";
 import { AdHocWorkoutDialog } from "../features/workout/components/AdHocWorkoutDialog";
 import { useWorkoutRepository } from "../features/workout/WorkoutRepositoryContext";
+import { useAuth } from "../features/auth/AuthContext";
 import { loadLatestSessionCache } from "../features/workout/data/activeSessionCache";
+import { listSyncOperations } from "../features/workout/data/workoutSyncStore";
+import { useWorkoutSync } from "../features/workout/WorkoutSyncContext";
 import { getDeviceId } from "../features/workout/data/deviceIdentity";
 import type {
   PreviousExerciseValues,
@@ -119,15 +122,20 @@ function ExerciseRows({
 }
 
 export function TodayPage() {
+  const auth = useAuth();
   const planningRepository = usePlanningRepository();
   const workoutRepository = useWorkoutRepository();
+  const syncCoordinator = useWorkoutSync();
   const navigate = useNavigate();
   const deviceId = useMemo(() => getDeviceId(), []);
+  const userId = auth.session?.user.id ?? "";
   const requestRef = useRef(0);
   const [loadStatus, setLoadStatus] = useState<LoadStatus>("initial");
   const [loadError, setLoadError] = useState("");
   const [startError, setStartError] = useState("");
   const [activeSession, setActiveSession] = useState<WorkoutSession | null>(null);
+  const [terminalSession, setTerminalSession] = useState<WorkoutSession | null>(null);
+  const [terminalAction, setTerminalAction] = useState<"finish_session" | "discard_session" | null>(null);
   const [sessionSource, setSessionSource] = useState<SessionSource>(null);
   const [preview, setPreview] = useState<ActiveRoutinePreview | null>(null);
   const [previousValues, setPreviousValues] = useState<Record<string, PreviousExerciseValues>>({});
@@ -145,11 +153,33 @@ export function TodayPage() {
     setLoadStatus("initial");
     setLoadError("");
     setStartError("");
+    setTerminalSession(null);
+    setTerminalAction(null);
     setPreviousValues({});
     setShowAllExercises(false);
 
-    const cached = await loadLatestSessionCache().catch(() => null);
-    const cachedSession = cached?.session.status === "ACTIVE" ? cached.session : null;
+    const cached = await loadLatestSessionCache(userId).catch(() => null);
+    const cachedOperations = cached ? await listSyncOperations(userId, cached.sessionId).catch(() => []) : [];
+    const cachedTerminalOperation = cachedOperations.find((operation) => operation.status === "PENDING" && (operation.command.action === "finish_session" || operation.command.action === "discard_session"));
+    const cachedSession = cached
+      && (!cached.userId || cached.userId === userId)
+      && cached.session.status === "ACTIVE"
+      ? cached.session
+      : null;
+    const cachedTerminalSession = cached
+      && (!cached.userId || cached.userId === userId)
+      && cachedTerminalOperation
+      && cached.session.status !== "ACTIVE"
+      ? cached.session
+      : null;
+    if (cachedTerminalSession && isCurrent()) {
+      setTerminalSession(cachedTerminalSession);
+      setTerminalAction(cachedTerminalOperation?.command.action as "finish_session" | "discard_session");
+      setActiveSession(null);
+      setSessionSource("cache");
+      setPreview(null);
+      setLoadStatus("refreshing");
+    }
     if (cachedSession && isCurrent()) {
       setActiveSession(cachedSession);
       setSessionSource("cache");
@@ -163,7 +193,15 @@ export function TodayPage() {
       serverSession = await workoutRepository.getActiveSession(deviceId);
     } catch (error) {
       if (!isCurrent()) return;
-      if (cachedSession) {
+      if (cachedTerminalSession) {
+        setTerminalSession(cachedTerminalSession);
+        setTerminalAction(cachedTerminalOperation?.command.action as "finish_session" | "discard_session");
+        setActiveSession(null);
+        setSessionSource("cache");
+        setPreview(null);
+        setLoadError("กำลังแสดงสถานะการจบ Workout ที่บันทึกไว้ในเครื่อง รอการซิงก์");
+        setLoadStatus("ready");
+      } else if (cachedSession) {
         setActiveSession(cachedSession);
         setSessionSource("cache");
         setPreview(null);
@@ -180,6 +218,15 @@ export function TodayPage() {
     }
 
     if (!isCurrent()) return;
+    if (cachedTerminalSession) {
+      setTerminalSession(cachedTerminalSession);
+      setTerminalAction(cachedTerminalOperation?.command.action as "finish_session" | "discard_session");
+      setActiveSession(null);
+      setSessionSource("cache");
+      setPreview(null);
+      setLoadStatus("ready");
+      return;
+    }
     if (serverSession) {
       setActiveSession(serverSession);
       setSessionSource("server");
@@ -189,6 +236,7 @@ export function TodayPage() {
     }
 
     setActiveSession(null);
+    setTerminalSession(null);
     setSessionSource(null);
     try {
       const nextPreview = await planningRepository.getActiveRoutinePreview();
@@ -206,7 +254,7 @@ export function TodayPage() {
       setLoadError(errorMessage(error, "โหลดแผนถัดไปไม่สำเร็จ"));
       setLoadStatus("error");
     }
-  }, [deviceId, planningRepository, workoutRepository]);
+  }, [deviceId, planningRepository, userId, workoutRepository]);
 
   useEffect(() => {
     void load();
@@ -214,6 +262,15 @@ export function TodayPage() {
       requestRef.current += 1;
     };
   }, [load]);
+
+  useEffect(() => {
+    if (!terminalSession) return;
+    syncCoordinator.start(terminalSession.id);
+    const unsubscribe = syncCoordinator.subscribe(() => {
+      if (syncCoordinator.getSnapshot().pendingCount === 0) void load();
+    });
+    return unsubscribe;
+  }, [load, syncCoordinator, terminalSession]);
 
   useEffect(() => {
     if (activeSession) setAdHocOpen(false);
@@ -292,6 +349,7 @@ export function TodayPage() {
 
   const contentState = resolveTodayContentState({
     initialLoading: loadStatus === "initial",
+    terminalSession,
     activeSession,
     preview,
     fatalError: loadStatus === "error",
@@ -319,7 +377,9 @@ export function TodayPage() {
     );
   }
 
-  const description = activeSession
+  const description = terminalSession
+    ? "Workout นี้ถูกบันทึกไว้ในเครื่องและกำลังรอการซิงก์"
+    : activeSession
     ? "กลับไปทำ Session ที่ยังดำเนินอยู่"
     : preview
       ? `${preview.routineName} · ${preview.dayLabel}`
@@ -332,6 +392,30 @@ export function TodayPage() {
       title="การฝึกของวันนี้"
       description={description}
     >
+      {contentState === "terminal-pending" && terminalSession ? (
+        <section className="page-grid" data-testid="today-terminal-pending">
+          <div className="col-span-4 min-w-0 tablet:col-span-5 desktop:col-span-8">
+            <p className="text-xs font-semibold tracking-[0.08em] text-warning">WORKOUT PENDING SYNC</p>
+            <h2 className="mt-3 text-h1 text-balance">
+              {terminalAction === "finish_session" ? "Workout จบแล้ว รอซิงก์" : "Workout ถูกยกเลิก รอซิงก์"}
+            </h2>
+            <p className="mt-3 max-w-xl text-base leading-7 text-ink-secondary">
+              {terminalAction === "finish_session" ? "ผลการฝึกถูกเก็บในเครื่องแล้ว เปิด Summary ได้ทันที และระบบจะยืนยันกับ server เมื่อออนไลน์" : "การยกเลิกถูกเก็บในเครื่องแล้ว Routine จะไม่เลื่อน และระบบจะยืนยันกับ server เมื่อออนไลน์"}
+            </p>
+            <div className="mt-6 flex flex-wrap gap-2">
+              {terminalAction === "finish_session" ? (
+                <Link to={`/workout/complete/${terminalSession.id}`} className={buttonStyles({ variant: "accent", size: "large" })}>เปิด Summary</Link>
+              ) : null}
+              <Button variant="secondary" size="large" onClick={() => void load()}>ตรวจสอบการซิงก์</Button>
+            </div>
+            {loadError ? <ActionError message={loadError} /> : null}
+          </div>
+          <aside className="col-span-4 mt-10 border-t border-line pt-5 tablet:col-span-3 tablet:mt-0 desktop:col-span-4">
+            <p className="text-xs font-semibold tracking-[0.08em] text-ink-muted">SYNC STATUS</p>
+            <p className="mt-3 text-sm leading-6 text-ink-secondary">ยังไม่สามารถเริ่มหรือ Resume Session ใหม่ได้จนกว่าการดำเนินการนี้จะซิงก์เสร็จ</p>
+          </aside>
+        </section>
+      ) : null}
       {contentState === "active-session" && activeSession ? (() => {
         const summary = summarizeActiveSession(activeSession);
         const ownerDevice = activeSession.ownerDeviceId === deviceId;

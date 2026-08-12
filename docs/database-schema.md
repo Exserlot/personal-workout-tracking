@@ -246,6 +246,10 @@ The server checks this table before applying a retried operation. Retention must
 
 IndexedDB `SyncOperation` records remain client-local and are not duplicated as a server queue table.
 
+### Remote conflict recovery
+
+`workout_remote_abandon_session(operation_id, session_id, expected_version)` is an authenticated, receipt-backed RPC for explicit recovery. It locks the Session, verifies ownership of the account (but not the current browser device), changes only `ACTIVE` to `DISCARDED`, and never advances a Routine. The client must archive its local Session and pending operations before clearing them; the archive stays in browser-local IndexedDB and is never sent to the server automatically.
+
 ## 7. Referential actions
 
 | Relationship | Recommended action | Reason |

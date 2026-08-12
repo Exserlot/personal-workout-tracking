@@ -100,10 +100,45 @@ export interface WorkoutCompletionSummary {
   }>;
 }
 
+export function completionSummaryFromSession(session: WorkoutSession): WorkoutCompletionSummary {
+  const exercises = session.exercises.map((exercise) => {
+    const completed = exercise.sets.filter((set) => set.status === "COMPLETED" && set.kind === "WORKING");
+    return {
+      name: exercise.name,
+      completedSetCount: completed.length,
+      volumeKg: completed.reduce((total, set) => total + (set.actualWeight?.kg ?? 0) * (set.actualReps ?? 0), 0),
+    };
+  });
+  const completedAt = session.completedAt ?? new Date().toISOString();
+  return {
+    sessionId: session.id,
+    sourceType: session.sourceType,
+    templateName: session.templateNameSnapshot,
+    startedAt: session.startedAt,
+    completedAt,
+    durationSeconds: Math.max(0, Math.floor((Date.parse(completedAt) - Date.parse(session.startedAt)) / 1000)),
+    exerciseCount: session.exercises.length,
+    completedWorkingSetCount: exercises.reduce((total, exercise) => total + exercise.completedSetCount, 0),
+    pendingSetCount: session.exercises.reduce((total, exercise) => total + exercise.sets.filter((set) => set.status === "PENDING").length, 0),
+    volumeKg: exercises.reduce((total, exercise) => total + exercise.volumeKg, 0),
+    exercises,
+  };
+}
+
 export interface WorkoutDevice {
   id: string;
   label: string | null;
   lastSeenAt: string;
+}
+
+export interface WorkoutConflictDetail {
+  sessionId: string;
+  reason: WorkoutRepositoryErrorCode;
+  localSession: WorkoutSession;
+  acknowledgedSession: WorkoutSession;
+  serverSession: WorkoutSession | null;
+  ownerDevice: WorkoutDevice | null;
+  operations: SyncOperation[];
 }
 
 export type WorkoutRepositoryErrorCode =
@@ -113,6 +148,8 @@ export type WorkoutRepositoryErrorCode =
   | "conflict"
   | "not-found"
   | "offline"
+  | "server"
+  | "authorization"
   | "unknown";
 
 export class WorkoutRepositoryError extends Error {
@@ -177,16 +214,53 @@ export type WorkoutCommand =
   | { action: "update_session_notes"; notes: string }
   | { action: "update_exercise_notes"; sessionExerciseId: string; notes: string };
 
+export type OfflineSetCommand =
+  | Extract<WorkoutCommand, { action: "complete_set" | "edit_set" }>
+  | Extract<WorkoutCommand, { action: "skip_set" | "delete_set" }>
+  | Extract<WorkoutCommand, { action: "add_set" }>;
+
+export type OfflineLifecycleCommand =
+  | { action: "finish_session" }
+  | { action: "discard_session" };
+
+export type OfflineWorkoutCommand = OfflineSetCommand | OfflineLifecycleCommand;
+
+export type SyncOperationStatus = "PENDING" | "CONFLICT";
+
+export interface SyncOperation {
+  operationId: string;
+  userId: string;
+  sessionId: string;
+  deviceId: string;
+  command: OfflineWorkoutCommand;
+  expectedVersion: number;
+  createdAt: number;
+  attemptCount: number;
+  lastAttemptAt: number | null;
+  nextAttemptAt: number;
+  status: SyncOperationStatus;
+  lastErrorCode: WorkoutRepositoryErrorCode | null;
+}
+
 export interface WorkoutRepository {
   registerDevice(deviceId: string, label?: string): Promise<WorkoutDevice>;
+  listDevices(): Promise<WorkoutDevice[]>;
   getActiveSession(deviceId: string): Promise<WorkoutSession | null>;
   getSession(sessionId: string, deviceId: string): Promise<WorkoutSession | null>;
   getPreviousValues(exerciseIds: string[]): Promise<Record<string, PreviousExerciseValues>>;
   startPlanned(input: StartPlannedInput): Promise<WorkoutSession>;
   startAdHoc(input: StartAdHocInput): Promise<WorkoutSession>;
   applyCommand(sessionId: string, deviceId: string, expectedVersion: number, command: WorkoutCommand): Promise<WorkoutSession>;
+  applyIdempotentCommand(input: {
+    operationId: string;
+    sessionId: string;
+    deviceId: string;
+    expectedVersion: number;
+    command: OfflineWorkoutCommand;
+  }): Promise<WorkoutSession>;
   finishSession(sessionId: string, deviceId: string, expectedVersion: number): Promise<WorkoutSession>;
   discardSession(sessionId: string, deviceId: string, expectedVersion: number): Promise<void>;
+  remoteAbandonSession(input: { operationId: string; sessionId: string; expectedVersion: number }): Promise<WorkoutSession>;
   getCompletionSummary(sessionId: string): Promise<WorkoutCompletionSummary>;
 }
 

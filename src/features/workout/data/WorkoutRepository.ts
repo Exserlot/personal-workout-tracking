@@ -12,10 +12,12 @@ import {
   type StartPlannedInput,
   type WeightUnit,
   type WorkoutCommand,
+  type OfflineWorkoutCommand,
   type WorkoutCompletionSummary,
   type WorkoutDevice,
   type WorkoutRepository,
   type WorkoutSession,
+  completionSummaryFromSession,
 } from "../domain/workout";
 import {
   SupabaseRequestError,
@@ -189,12 +191,25 @@ function rpcId(value: unknown): string {
   throw new WorkoutRepositoryError("unknown", "Workout mutation did not return an id");
 }
 
+function rpcVersion(value: unknown): number {
+  if (typeof value === "number" && Number.isInteger(value)) return value;
+  if (typeof value === "string" && Number.isInteger(Number(value))) return Number(value);
+  if (Array.isArray(value)) return rpcVersion(value[0]);
+  const row = value && typeof value === "object" ? value as RecordValue : null;
+  if (row && "result_version" in row) return rpcVersion(row.result_version);
+  throw new WorkoutRepositoryError("unknown", "Workout mutation did not return a valid version");
+}
+
 function mapError(error: unknown, fallback: string): WorkoutRepositoryError {
   if (error instanceof WorkoutRepositoryError) return error;
   if (error instanceof SupabaseRequestError) {
     const payload = error.payload && typeof error.payload === "object" ? error.payload as RecordValue : null;
+    if (error.status >= 500) return new WorkoutRepositoryError("server", "Supabase ขัดข้องชั่วคราว การบันทึกจะลองใหม่อัตโนมัติ");
+    if (error.status === 401 || error.status === 403) return new WorkoutRepositoryError("authorization", "กรุณาเข้าสู่ระบบเพื่อบันทึก Workout");
     const code = typeof payload?.code === "string" ? payload.code : "";
     const message = typeof payload?.message === "string" ? payload.message : "";
+    if (message === "session_not_active") return new WorkoutRepositoryError("conflict", "Session นี้ถูกปิดไปแล้วหรือมีการเปลี่ยนแปลงจากอุปกรณ์อื่น");
+    if (message === "operation_id_conflict") return new WorkoutRepositoryError("conflict", "คิวการบันทึกนี้ไม่ตรงกับข้อมูลบน server และถูกหยุดไว้เพื่อป้องกันข้อมูลทับกัน");
     if (message === "active_session_exists" || code === "23505") return new WorkoutRepositoryError("active-exists", "มี Active Session อยู่แล้ว กรุณา Resume หรือ Discard ก่อน");
     if (message === "device_locked") return new WorkoutRepositoryError("device-locked", "Session นี้กำลังถูกใช้งานจากอุปกรณ์อื่น");
     if (message === "revision_conflict" || message === "active_routine_changed" || code === "40001") return new WorkoutRepositoryError("conflict", "ข้อมูล Session เปลี่ยนจากอุปกรณ์อื่น กรุณาโหลดใหม่");
@@ -206,7 +221,7 @@ function mapError(error: unknown, fallback: string): WorkoutRepositoryError {
   return new WorkoutRepositoryError("unknown", fallback);
 }
 
-function commandPayload(command: WorkoutCommand) {
+function commandPayload(command: WorkoutCommand | OfflineWorkoutCommand) {
   switch (command.action) {
     case "complete_set":
     case "edit_set":
@@ -253,6 +268,9 @@ function commandPayload(command: WorkoutCommand) {
       return { action: command.action, notes: command.notes };
     case "update_exercise_notes":
       return { action: command.action, session_exercise_id: command.sessionExerciseId, notes: command.notes };
+    case "finish_session":
+    case "discard_session":
+      return { action: command.action };
   }
 }
 
@@ -274,6 +292,24 @@ export class SupabaseWorkoutRepository implements WorkoutRepository {
       return { id: stringValue(row.id, "id") as string, label: stringValue(row.label, "label", true), lastSeenAt: stringValue(row.last_seen_at, "last_seen_at") as string };
     } catch (error) {
       throw mapError(error, "ลงทะเบียนอุปกรณ์ไม่สำเร็จ");
+    }
+  }
+
+  async listDevices(): Promise<WorkoutDevice[]> {
+    try {
+      const params = new URLSearchParams({ select: "id,label,last_seen_at,revoked_at", order: "last_seen_at.desc" });
+      const rows = parseRows(await this.client.request<unknown[]>({ method: "GET", path: `devices?${params.toString()}` }));
+      return rows.map((value) => {
+        const row = record(value, "device");
+        if (row.revoked_at !== null && row.revoked_at !== undefined) throw new WorkoutRepositoryError("unknown", "Workout response has revoked device");
+        return {
+          id: stringValue(row.id, "id") as string,
+          label: stringValue(row.label, "label", true),
+          lastSeenAt: stringValue(row.last_seen_at, "last_seen_at") as string,
+        };
+      });
+    } catch (error) {
+      throw mapError(error, "โหลดอุปกรณ์ไม่สำเร็จ");
     }
   }
 
@@ -364,6 +400,36 @@ export class SupabaseWorkoutRepository implements WorkoutRepository {
     }
   }
 
+  async applyIdempotentCommand(input: { operationId: string; sessionId: string; deviceId: string; expectedVersion: number; command: OfflineWorkoutCommand }): Promise<WorkoutSession> {
+    try {
+      const resultVersion = rpcVersion(await this.client.request<unknown>({
+        method: "POST",
+        path: "rpc/workout_apply_command_idempotent",
+        body: {
+          p_operation_id: input.operationId,
+          p_session_id: input.sessionId,
+          p_device_id: input.deviceId,
+          p_expected_version: input.expectedVersion,
+          p_command: commandPayload(input.command),
+        },
+      }));
+      let session: WorkoutSession | null;
+      try {
+        session = await this.getSessionById(input.sessionId);
+      } catch (error) {
+        // The RPC may already have committed. Keep the operation retryable so
+        // the same receipt can be used when the acknowledgement read fails.
+        throw mapError(error, "บันทึกสำเร็จแต่โหลด Session ที่ยืนยันแล้วไม่สำเร็จ");
+      }
+      if (!session || session.version < resultVersion) {
+        throw new WorkoutRepositoryError("server", "บันทึกสำเร็จแต่ยังโหลด Session ที่ยืนยันแล้วไม่ได้");
+      }
+      return session;
+    } catch (error) {
+      throw mapError(error, "ซิงก์การบันทึก Set ไม่สำเร็จ");
+    }
+  }
+
   async finishSession(sessionId: string, deviceId: string, expectedVersion: number): Promise<WorkoutSession> {
     try {
       const id = rpcId(await this.client.request<unknown>({ method: "POST", path: "rpc/workout_finish_session", body: { p_session_id: sessionId, p_device_id: deviceId, p_expected_version: expectedVersion } }));
@@ -383,27 +449,30 @@ export class SupabaseWorkoutRepository implements WorkoutRepository {
     }
   }
 
+  async remoteAbandonSession(input: { operationId: string; sessionId: string; expectedVersion: number }): Promise<WorkoutSession> {
+    try {
+      const resultVersion = rpcVersion(await this.client.request<unknown>({
+        method: "POST",
+        path: "rpc/workout_remote_abandon_session",
+        body: {
+          p_operation_id: input.operationId,
+          p_session_id: input.sessionId,
+          p_expected_version: input.expectedVersion,
+        },
+      }));
+      const session = await this.getSessionById(input.sessionId);
+      if (!session || session.version < resultVersion) throw new WorkoutRepositoryError("server", "Abandon สำเร็จแต่โหลด Session ยืนยันไม่ได้");
+      return session;
+    } catch (error) {
+      throw mapError(error, "Abandon Server Session ไม่สำเร็จ");
+    }
+  }
+
   async getCompletionSummary(sessionId: string): Promise<WorkoutCompletionSummary> {
     try {
       const session = await this.getSessionById(sessionId);
       if (!session || session.status !== "COMPLETED" || !session.completedAt) throw new WorkoutRepositoryError("not-found", "ไม่พบ Completed Session");
-      const exercises = session.exercises.map((exercise) => {
-        const completed = exercise.sets.filter((set) => set.status === "COMPLETED" && set.kind === "WORKING");
-        return { name: exercise.name, completedSetCount: completed.length, volumeKg: completed.reduce((total, set) => total + (set.actualWeight?.kg ?? 0) * (set.actualReps ?? 0), 0) };
-      });
-      return {
-        sessionId: session.id,
-        sourceType: session.sourceType,
-        templateName: session.templateNameSnapshot,
-        startedAt: session.startedAt,
-        completedAt: session.completedAt,
-        durationSeconds: Math.max(0, Math.floor((Date.parse(session.completedAt) - Date.parse(session.startedAt)) / 1000)),
-        exerciseCount: session.exercises.length,
-        completedWorkingSetCount: exercises.reduce((total, exercise) => total + exercise.completedSetCount, 0),
-        pendingSetCount: session.exercises.reduce((total, exercise) => total + exercise.sets.filter((set) => set.status === "PENDING").length, 0),
-        volumeKg: exercises.reduce((total, exercise) => total + exercise.volumeKg, 0),
-        exercises,
-      };
+      return completionSummaryFromSession(session);
     } catch (error) {
       throw mapError(error, "คำนวณ Completion Summary ไม่สำเร็จ");
     }

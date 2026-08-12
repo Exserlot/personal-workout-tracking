@@ -1,5 +1,7 @@
 # Personal Workout Tracking Web App — Development Roadmap
 
+**Living status tracker:** [Project Roadmap Tracker](project-roadmap.md)
+
 **Product scope:** [Product Requirements](product-requirements.md)  
 **System behavior:** [User Flows](user-flows.md)  
 **Screens and navigation:** [Information Architecture](information-architecture.md)

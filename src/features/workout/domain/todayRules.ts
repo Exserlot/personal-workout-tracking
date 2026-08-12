@@ -10,6 +10,7 @@ import type {
 
 export type TodayContentState =
   | "initial-loading"
+  | "terminal-pending"
   | "active-session"
   | "planned-workout"
   | "no-routine"
@@ -17,15 +18,18 @@ export type TodayContentState =
 
 export function resolveTodayContentState({
   initialLoading,
+  terminalSession,
   activeSession,
   preview,
   fatalError,
 }: {
   initialLoading: boolean;
+  terminalSession?: WorkoutSession | null;
   activeSession: WorkoutSession | null;
   preview: ActiveRoutinePreview | null;
   fatalError: boolean;
 }): TodayContentState {
+  if (terminalSession) return "terminal-pending";
   if (activeSession) return "active-session";
   if (initialLoading) return "initial-loading";
   if (preview) return "planned-workout";

@@ -53,6 +53,8 @@ pnpm build
 
 For local database setup, see [docs/supabase-local-setup.md](docs/supabase-local-setup.md).
 
+For current milestone status, completed work, next tasks, and release gates, see [docs/project-roadmap.md](docs/project-roadmap.md).
+
 ## Local Supabase Initial Setup
 
 The application connects to a local Supabase stack through its browser-safe publishable key. Docker Desktop (Linux containers) and Node.js with pnpm are required.

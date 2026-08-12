@@ -11,7 +11,9 @@ interface WorkoutSetRowProps {
   expanded: boolean;
   isBodyweight?: boolean;
   readOnly?: boolean;
+  kindReadOnly?: boolean;
   busy?: boolean;
+  pendingSync?: boolean;
   onToggle: () => void;
   onChange: (field: keyof SetDraftValue, value: string) => void;
   onSave: () => void;
@@ -37,7 +39,7 @@ function compactSetSummary(set: SessionSet, draft: SetDraftValue) {
   return effort ? `${performance} · ${effort.metric} ${effort.value}` : performance;
 }
 
-export function WorkoutSetRow({ set, draft, errors, expanded, isBodyweight = false, readOnly = false, busy = false, onToggle, onChange, onSave, onSkip, onDelete, onKindChange }: WorkoutSetRowProps) {
+export function WorkoutSetRow({ set, draft, errors, expanded, isBodyweight = false, readOnly = false, kindReadOnly = readOnly, busy = false, pendingSync = false, onToggle, onChange, onSave, onSkip, onDelete, onKindChange }: WorkoutSetRowProps) {
   const completed = set.status === "COMPLETED";
   const errorId = `${set.id}-error`;
   const hasErrors = Object.values(errors).some(Boolean);
@@ -62,6 +64,7 @@ export function WorkoutSetRow({ set, draft, errors, expanded, isBodyweight = fal
           <span className={cn("shrink-0 text-xs font-semibold", completed ? "text-success" : set.status === "SKIPPED" ? "text-warning" : "text-ink-muted")}>
             {completed ? "เสร็จแล้ว" : set.status === "SKIPPED" ? "ข้ามแล้ว" : "รอบันทึก"}
           </span>
+          {pendingSync ? <span className="shrink-0 text-[10px] font-semibold text-warning">Saved locally</span> : null}
           <span className="ml-auto min-w-0 truncate text-right text-xs tabular-nums text-ink-secondary">
             {compactSetSummary(set, draft)}
           </span>
@@ -77,7 +80,7 @@ export function WorkoutSetRow({ set, draft, errors, expanded, isBodyweight = fal
             <select
               aria-label={`ประเภทเซ็ต ${set.sequence}`}
               value={set.kind === "WARM_UP" ? "WARM_UP" : "WORKING"}
-              disabled={readOnly || busy || completed}
+              disabled={kindReadOnly || busy || completed}
               className="min-h-10 w-[7.25rem] appearance-none rounded-xs border border-line bg-surface py-2 pl-3 pr-9 text-xs text-ink outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-ink"
               onChange={(event) => onKindChange(event.target.value as "WARM_UP" | "WORKING")}
             >
@@ -107,7 +110,7 @@ export function WorkoutSetRow({ set, draft, errors, expanded, isBodyweight = fal
               onChange={(event) => onChange("weight", event.target.value)}
             />
             <select
-              aria-label={`หน่วยน้ำหนัก เซ็ต ${set.sequence}`}
+              aria-label={`หน่วย เซ็ต ${set.sequence}`}
               value={draft.weightUnit}
               disabled={readOnly || busy}
               className="min-h-12 w-[4.1rem] shrink-0 rounded-xs border border-line bg-surface px-1 text-xs text-ink outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-ink tablet:min-h-11"
@@ -176,6 +179,7 @@ export function WorkoutSetRow({ set, draft, errors, expanded, isBodyweight = fal
           <div className="flex min-w-0 items-center gap-1">
             {!completed && set.status === "PENDING" ? (
               <Button
+                data-testid={`skip-set-${set.id}`}
                 variant="quiet"
                 size="compact"
                 className="min-h-11 px-3"
@@ -187,6 +191,7 @@ export function WorkoutSetRow({ set, draft, errors, expanded, isBodyweight = fal
             ) : null}
             {completed ? (
               <Button
+                data-testid={`delete-set-${set.id}`}
                 variant="destructive"
                 size="compact"
                 className="h-11 w-11 p-0"

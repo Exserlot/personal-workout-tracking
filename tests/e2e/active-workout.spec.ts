@@ -1,7 +1,25 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page, type Route } from "@playwright/test";
 
 const deviceId = "11111111-1111-4111-8111-111111111111";
 const sessionId = "22222222-2222-4222-8222-222222222222";
+const idempotentRpcPattern = "**/rest/v1/rpc/workout_apply_command_idempotent";
+
+const abortSync = (route: Route) => route.abort("failed");
+
+async function syncQueueCount(page: Page) {
+  return page.evaluate(() => new Promise<number>((resolve, reject) => {
+    const request = indexedDB.open("personal-workout-tracker", 4);
+    request.onsuccess = () => {
+      const database = request.result;
+      const transaction = database.transaction("workout-sync-operations", "readonly");
+      const count = transaction.objectStore("workout-sync-operations").count();
+      count.onsuccess = () => resolve(count.result);
+      count.onerror = () => reject(count.error);
+      transaction.oncomplete = () => database.close();
+    };
+    request.onerror = () => reject(request.error);
+  }));
+}
 
 function makeSession() {
   return {
@@ -123,9 +141,17 @@ test.describe("Active Workout set logging", () => {
         await route.fulfill({ json: deviceId });
         return;
       }
-      if (rpc === "workout_apply_command") {
+      if (rpc === "workout_apply_command" || rpc === "workout_apply_command_idempotent") {
         const command = body.p_command as Record<string, unknown>;
-        const set = session.workout_session_exercises[0].workout_session_sets.find((item) => item.id === String(command.set_id));
+        if (command.action === "finish_session" || command.action === "discard_session") {
+          session.status = command.action === "finish_session" ? "COMPLETED" : "DISCARDED";
+          session.completed_at = command.action === "finish_session" ? "2026-08-09T10:02:00.000Z" : null;
+          session.version += 1;
+          await route.fulfill({ json: session.version });
+          return;
+        }
+        const sets = session.workout_session_exercises[0].workout_session_sets;
+        const set = sets.find((item) => item.id === String(command.set_id));
         if (command.action === "complete_set" || command.action === "edit_set") {
           Object.assign(set, {
             actual_weight_value: command.actual_weight_value,
@@ -138,8 +164,15 @@ test.describe("Active Workout set logging", () => {
             completed_at: "2026-08-09T10:01:00.000Z",
           });
         } else if (command.action === "add_set") {
-          const template = session.workout_session_exercises[0].workout_session_sets.at(-1);
-          if (template) session.workout_session_exercises[0].workout_session_sets.push({ ...template, id: String(command.set_id), sequence_no: Number(command.sequence_no), actual_weight_value: null, actual_weight_unit: null, actual_weight_kg: null, actual_reps: null, actual_effort_metric: null, actual_effort_value: null, status: "PENDING", completed_at: null });
+          const template = sets.at(-1);
+          if (template) sets.push({ ...template, id: String(command.set_id), sequence_no: Number(command.sequence_no), actual_weight_value: null, actual_weight_unit: null, actual_weight_kg: null, actual_reps: null, actual_effort_metric: null, actual_effort_value: null, status: "PENDING", completed_at: null });
+        } else if (command.action === "skip_set" && set) {
+          set.status = "SKIPPED";
+          set.completed_at = null;
+        } else if (command.action === "delete_set") {
+          const index = sets.findIndex((item) => item.id === String(command.set_id));
+          if (index >= 0) sets.splice(index, 1);
+          sets.forEach((item, indexValue) => { item.sequence_no = indexValue + 1; });
         }
         session.version += 1;
         await route.fulfill({ json: session.version });
@@ -202,6 +235,109 @@ test.describe("Active Workout set logging", () => {
     const row = page.getByTestId("set-row-session-set-1");
     await expect(row.getByLabel("น้ำหนัก เซ็ต 1")).toBeHidden();
     await expect(row).toContainText("70 KG × 8");
+  });
+
+  test("saves Complete Set locally while offline and syncs after reconnect", async ({ page, context }) => {
+    await page.route(idempotentRpcPattern, abortSync);
+    await context.setOffline(true);
+    await page.locator('input[id="session-set-1-weight"]').fill("72.5");
+    await page.getByLabel("Reps เซ็ต 1").fill("8");
+    await page.getByLabel("Effort value เซ็ต 1").fill("8.5");
+    await page.getByTestId("primary-set-action").click();
+    await expect(page.getByTestId("set-row-session-set-1")).toContainText("72.5 KG");
+    await expect(page.getByTestId("sync-status")).toContainText("Offline");
+
+    await page.unroute(idempotentRpcPattern, abortSync);
+    await context.setOffline(false);
+    await expect(page.getByTestId("sync-status")).toContainText("Synced", { timeout: 10_000 });
+  });
+
+  test("queues Add, Complete and Edit for one Set while offline", async ({ page, context }) => {
+    await page.route(idempotentRpcPattern, abortSync);
+    await context.setOffline(true);
+    await page.getByTestId("add-set").click();
+    await expect.poll(() => syncQueueCount(page)).toBe(1);
+    const rows = page.locator('article[data-testid^="set-row-"]');
+    await expect(rows).toHaveCount(2);
+    const addedRow = rows.nth(1);
+    await addedRow.locator('input[type="number"]').first().fill("80");
+    await page.getByTestId("primary-set-action").click();
+    await expect.poll(() => syncQueueCount(page)).toBe(2);
+    await expect(addedRow).toContainText("80 KG");
+
+    await addedRow.locator('button[aria-expanded]').click();
+    await addedRow.locator('input[type="number"]').first().fill("82.5");
+    await addedRow.locator('[data-testid^="save-set-"]').click();
+    await expect.poll(() => syncQueueCount(page)).toBe(3);
+    await expect(addedRow).toContainText("82.5 KG");
+    await expect(page.getByTestId("sync-status")).toContainText("3 รายการรอซิงก์");
+
+    await page.unroute(idempotentRpcPattern, abortSync);
+    await context.setOffline(false);
+    await expect(page.getByTestId("sync-status")).toContainText("Synced", { timeout: 10_000 });
+  });
+
+  test("queues Skip while offline and preserves it after sync and refresh", async ({ page, context }) => {
+    await page.route(idempotentRpcPattern, abortSync);
+    await context.setOffline(true);
+    await page.getByTestId("skip-set-session-set-1").click();
+    await expect(page.getByTestId("set-row-session-set-1")).toContainText("ข้ามแล้ว");
+    await page.unroute(idempotentRpcPattern, abortSync);
+    await context.setOffline(false);
+    await expect(page.getByTestId("sync-status")).toContainText("Synced", { timeout: 10_000 });
+    await page.reload();
+    await expect(page.getByTestId("set-row-session-set-1")).toContainText("ข้ามแล้ว");
+  });
+
+  test("queues Delete while offline and keeps remaining Set sequence intact", async ({ page, context }) => {
+    await page.getByTestId("primary-set-action").click();
+    await expect(page.getByTestId("sync-status")).toContainText("Synced", { timeout: 10_000 });
+    await page.getByTestId("add-set").click();
+    await expect(page.locator('article[data-testid^="set-row-"]')).toHaveCount(2);
+    await expect(page.getByTestId("sync-status")).toContainText("Synced", { timeout: 10_000 });
+
+    await page.route(idempotentRpcPattern, abortSync);
+    await context.setOffline(true);
+    await page.getByTestId("set-row-session-set-1").locator('button[aria-expanded]').click();
+    page.once("dialog", (dialog) => void dialog.accept());
+    await page.getByTestId("delete-set-session-set-1").click();
+    const remainingRows = page.locator('article[data-testid^="set-row-"]');
+    await expect(remainingRows).toHaveCount(1);
+    await expect(remainingRows.first()).toContainText("01");
+    await page.unroute(idempotentRpcPattern, abortSync);
+    await context.setOffline(false);
+    await expect(page.getByTestId("sync-status")).toContainText("Synced", { timeout: 10_000 });
+  });
+
+  test("finishes offline into a local Summary and syncs the lifecycle once", async ({ page, context }) => {
+    await page.getByTestId("primary-set-action").click();
+    await expect(page.getByTestId("sync-status")).toContainText("Synced", { timeout: 10_000 });
+    await expect.poll(() => syncQueueCount(page)).toBe(0);
+    await page.route(idempotentRpcPattern, abortSync);
+    await context.setOffline(true);
+    page.once("dialog", (dialog) => void dialog.accept());
+    await page.getByRole("button", { name: "Finish Workout" }).click();
+    await expect(page).toHaveURL(/\/workout\/complete\//);
+    await expect(page.getByText(/Saved locally|Offline/)).toBeVisible();
+    await expect.poll(() => syncQueueCount(page)).toBe(1);
+    await page.unroute(idempotentRpcPattern, abortSync);
+    await context.setOffline(false);
+    await expect(page.getByText("Synced", { exact: true })).toBeVisible({ timeout: 10_000 });
+    expect(await page.evaluate(() => window.localStorage.getItem("fitness-workout-device-id"))).toBe(deviceId);
+  });
+
+  test("discards offline without offering a second Start before sync", async ({ page, context }) => {
+    await page.route(idempotentRpcPattern, abortSync);
+    await context.setOffline(true);
+    page.once("dialog", (dialog) => void dialog.accept());
+    await page.getByRole("button", { name: "Discard" }).click();
+    await expect(page).toHaveURL(/\/today$/);
+    await expect(page.getByTestId("today-terminal-pending")).toBeVisible();
+    await expect(page.getByText(/ยังไม่สามารถเริ่มหรือ Resume/)).toBeVisible();
+    await expect.poll(() => syncQueueCount(page)).toBe(1);
+    await page.unroute(idempotentRpcPattern, abortSync);
+    await context.setOffline(false);
+    await expect.poll(() => syncQueueCount(page)).toBe(0, { timeout: 10_000 });
   });
 
   test("keeps the mobile layout within the viewport", async ({ page }) => {

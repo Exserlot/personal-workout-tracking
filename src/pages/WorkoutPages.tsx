@@ -61,6 +61,10 @@ import {
 import { useWorkoutSync } from "../features/workout/WorkoutSyncContext";
 import type { WorkoutSyncSnapshot } from "../features/workout/data/WorkoutSyncCoordinator";
 import { enqueueOfflineWorkoutCommand, listSyncOperations, WorkoutQueueError } from "../features/workout/data/workoutSyncStore";
+import { useProgressRepository } from "../features/progress/ProgressRepositoryContext";
+import { SessionRecordList } from "../features/progress/components/SessionRecordList";
+import type { ProgressRecord } from "../features/progress/domain/progress";
+import { useProgressDisplayUnit } from "../features/progress/useProgressDisplayUnit";
 
 type LoadStatus = "loading" | "ready" | "error";
 const DEFAULT_TIMER: WorkoutTimerCache = {
@@ -1285,7 +1289,9 @@ export function ActiveWorkoutPage() {
 
 export function CompletionSummaryPage() {
     const repository = useWorkoutRepository();
+    const progressRepository = useProgressRepository();
     const auth = useAuth();
+    const [progressUnit] = useProgressDisplayUnit(auth.session?.user.id ?? "");
     const syncCoordinator = useWorkoutSync();
     const { sessionId } = useParams();
     const [summary, setSummary] = useState<Awaited<
@@ -1293,6 +1299,9 @@ export function CompletionSummaryPage() {
     > | null>(null);
     const [error, setError] = useState("");
     const [syncSnapshot, setSyncSnapshot] = useState<WorkoutSyncSnapshot>(syncCoordinator.getSnapshot());
+    const [records, setRecords] = useState<ProgressRecord[]>([]);
+    const [recordsLoading, setRecordsLoading] = useState(false);
+    const [recordsError, setRecordsError] = useState(false);
     useEffect(() => {
         if (!sessionId) return;
         void repository
@@ -1318,6 +1327,14 @@ export function CompletionSummaryPage() {
         }).catch(() => undefined);
         return unsubscribe;
     }, [auth.session?.user.id, sessionId, syncCoordinator]);
+    useEffect(() => {
+        if (!sessionId || !summary || syncSnapshot.pendingCount > 0 || syncSnapshot.status === "offline" || syncSnapshot.status === "conflict") return;
+        let active = true;
+        setRecordsLoading(true);
+        setRecordsError(false);
+        void progressRepository.listSessionRecords(sessionId).then((next) => { if (active) setRecords(next); }).catch(() => { if (active) { setRecords([]); setRecordsError(true); } }).finally(() => { if (active) setRecordsLoading(false); });
+        return () => { active = false; };
+    }, [progressRepository, sessionId, summary, syncSnapshot.pendingCount, syncSnapshot.status]);
     if (error && !summary)
         return (
             <PageFrame
@@ -1401,6 +1418,16 @@ export function CompletionSummaryPage() {
                                 </span>
                             </div>
                         ))}
+                    </div>
+                </section>
+                <section className="col-span-4 mt-10 border-t border-line pt-6 tablet:col-span-8 desktop:col-span-4">
+                    <SectionHeader eyebrow="PERSONAL RECORDS" title="PR จาก Workout นี้" description="คำนวณจากข้อมูลที่ server ยืนยันแล้ว" />
+                    <div className="mt-4">
+                        {syncSnapshot.status === "conflict" ? <p className="text-sm text-warning">ยังไม่คำนวณ PR เพราะ Session มี conflict · <Link className="underline" to={`/settings?session=${encodeURIComponent(sessionId ?? "")}`}>ตรวจสอบ Sync Status</Link></p>
+                            : syncSnapshot.pendingCount > 0 || syncSnapshot.status === "offline" ? <p className="text-sm text-ink-secondary">กำลังรอซิงก์เพื่อคำนวณ PR</p>
+                                : recordsLoading ? <p className="text-sm text-ink-secondary">กำลังคำนวณ PR…</p>
+                                    : recordsError ? <p className="text-sm text-error">คำนวณ PR ไม่สำเร็จ กรุณาเปิดหน้านี้ใหม่เมื่อเชื่อมต่อได้</p>
+                                        : <SessionRecordList records={records} unit={progressUnit} />}
                     </div>
                 </section>
             </div>

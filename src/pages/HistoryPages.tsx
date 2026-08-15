@@ -12,6 +12,11 @@ import { HistoryRepositoryError } from "../features/history/domain/history";
 import { useExerciseRepository } from "../features/exercises/ExerciseRepositoryContext";
 import { defaultExerciseQuery, type Exercise } from "../features/exercises/domain/exercise";
 import { kgFromWeight, type SessionExercise, type SessionSet, type WeightUnit, type WorkoutSession } from "../features/workout/domain/workout";
+import { useAuth } from "../features/auth/AuthContext";
+import { useProgressRepository } from "../features/progress/ProgressRepositoryContext";
+import { SessionRecordList } from "../features/progress/components/SessionRecordList";
+import type { ProgressRecord } from "../features/progress/domain/progress";
+import { useProgressDisplayUnit } from "../features/progress/useProgressDisplayUnit";
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("th-TH", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
@@ -215,6 +220,9 @@ function ExerciseEditor({ exercise, exerciseIndex, exerciseOptions, validationKe
 
 export function HistoryDetailPage() {
   const repository = useHistoryRepository();
+  const progressRepository = useProgressRepository();
+  const auth = useAuth();
+  const [progressUnit] = useProgressDisplayUnit(auth.session?.user.id ?? "");
   const exerciseRepository = useExerciseRepository();
   const { sessionId } = useParams();
   const navigate = useNavigate();
@@ -228,6 +236,8 @@ export function HistoryDetailPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [success, setSuccess] = useState("");
+  const [sessionRecords, setSessionRecords] = useState<ProgressRecord[]>([]);
+  const [recordsError, setRecordsError] = useState(false);
   const [online, setOnline] = useState(typeof navigator === "undefined" ? true : navigator.onLine);
   const updateAttempt = useRef<{ operationId: string; fingerprint: string } | null>(null);
   const deleteAttempt = useRef<{ operationId: string; fingerprint: string } | null>(null);
@@ -318,6 +328,13 @@ export function HistoryDetailPage() {
   function moveExercise(id: string, direction: -1 | 1) { setDraft((value) => { if (!value) return value; const index = value.exercises.findIndex((exercise) => exercise.id === id); const target = index + direction; if (target < 0 || target >= value.exercises.length) return value; const exercises = [...value.exercises]; [exercises[index], exercises[target]] = [exercises[target], exercises[index]]; return { ...value, exercises: resequenceExercises(exercises) }; }); }
   function addExercise() { const selected = exerciseOptions[0]; if (!selected) return; const set: SessionSet = { id: crypto.randomUUID(), sourceTemplateSetId: null, sequence: 1, kind: "WORKING", isToFailure: false, targetRepsMin: null, targetRepsMax: null, targetWeight: null, targetEffort: null, targetRestSeconds: 0, actualWeight: null, actualReps: null, actualEffort: null, actualRestSeconds: null, status: "COMPLETED", completedAt: new Date().toISOString(), notes: "" }; const exercise: SessionExercise = { id: crypto.randomUUID(), sourceTemplateExerciseId: null, sourceExerciseId: selected.id, sequence: (draft?.exercises.length ?? 0) + 1, name: selected.name, equipmentCode: selected.equipmentCode, muscles: [], notes: "", sets: [set] }; setDraft((value) => value ? { ...value, exercises: [...value.exercises, exercise] } : value); }
   const canMutate = online && sessionSource === "server";
+  useEffect(() => {
+    if (!session || sessionSource !== "server" || editing) return;
+    let active = true;
+    setRecordsError(false);
+    void progressRepository.listSessionRecords(session.id).then((records) => { if (active) setSessionRecords(records); }).catch(() => { if (active) { setSessionRecords([]); setRecordsError(true); } });
+    return () => { active = false; };
+  }, [editing, progressRepository, session, sessionSource]);
   async function save() {
     if (!session || !draft || saving || !canMutate) return;
     const validation = validateHistoryDraft(draft);
@@ -391,7 +408,9 @@ export function HistoryDetailPage() {
         <div className="mt-6 border-t border-line">{draft.exercises.map((exercise, exerciseIndex) => { const issue = Object.entries(validation).find(([key]) => key.startsWith(`exercise-${exerciseIndex}`)); return <ExerciseEditor key={exercise.id} exercise={exercise} exerciseIndex={exerciseIndex} validationKey={validationTarget?.startsWith(`exercise-${exerciseIndex}`) ? validationTarget : undefined} editing={editing} exerciseOptions={exerciseOptions} onChange={(next) => changeExercise(exercise.id, next)} onDelete={() => setDraft({ ...draft, exercises: resequenceExercises(draft.exercises.filter((item) => item.id !== exercise.id)) })} onMove={(direction) => moveExercise(exercise.id, direction)} canDelete={true} error={issue?.[0] === validationTarget ? issue[1] : undefined} requestConfirmation={requestConfirmation} />; })}</div>
         {editing ? <button type="button" className={buttonStyles({ variant: "secondary", className: "mt-5" })} onClick={addExercise} disabled={!exerciseOptions.length}><Plus size={16} /> เพิ่มท่า</button> : null}
       </section>
-      <aside className="col-span-4 mt-8 border-t border-line pt-6 tablet:col-span-8 desktop:col-span-4 desktop:mt-0"><SectionHeader eyebrow="ACTIONS" title="จัดการ Session" description={editing ? "ตรวจสอบค่าแล้วบันทึกเมื่อพร้อม" : "แก้ไขย้อนหลังได้เมื่อเชื่อมต่อ server"} />{!editing ? <div className="mt-5 grid gap-3"><button type="button" className={buttonStyles({ variant: "primary" })} onClick={() => { setError(null); setValidationTarget(null); setEditing(true); }} disabled={!canMutate}>แก้ไข History</button><button type="button" className={buttonStyles({ variant: "quiet", className: "text-error" })} onClick={remove} disabled={!canMutate || saving}>ลบ Session</button>{sessionSource === "cache" ? <button type="button" className={buttonStyles({ variant: "secondary" })} onClick={() => void loadCanonicalSession()}>Retry server</button> : null}</div> : <div className="mt-5 grid gap-3"><button type="button" className={buttonStyles({ variant: "primary" })} onClick={save} disabled={!canMutate || saving}>{saving ? "กำลังบันทึก…" : "บันทึกการแก้ไข"}</button><button type="button" className={buttonStyles({ variant: "quiet" })} onClick={cancelEditing}>ยกเลิก</button></div>}</aside>
+      <aside className="col-span-4 mt-8 border-t border-line pt-6 tablet:col-span-8 desktop:col-span-4 desktop:mt-0"><SectionHeader eyebrow="ACTIONS" title="จัดการ Session" description={editing ? "ตรวจสอบค่าแล้วบันทึกเมื่อพร้อม" : "แก้ไขย้อนหลังได้เมื่อเชื่อมต่อ server"} />{!editing ? <div className="mt-5 grid gap-3"><button type="button" className={buttonStyles({ variant: "primary" })} onClick={() => { setError(null); setValidationTarget(null); setEditing(true); }} disabled={!canMutate}>แก้ไข History</button><button type="button" className={buttonStyles({ variant: "quiet", className: "text-error" })} onClick={remove} disabled={!canMutate || saving}>ลบ Session</button>{sessionSource === "cache" ? <button type="button" className={buttonStyles({ variant: "secondary" })} onClick={() => void loadCanonicalSession()}>Retry server</button> : null}</div> : <div className="mt-5 grid gap-3"><button type="button" className={buttonStyles({ variant: "primary" })} onClick={save} disabled={!canMutate || saving}>{saving ? "กำลังบันทึก…" : "บันทึกการแก้ไข"}</button><button type="button" className={buttonStyles({ variant: "quiet" })} onClick={cancelEditing}>ยกเลิก</button></div>}
+        {!editing && sessionSource === "server" ? <div className="mt-10"><SectionHeader eyebrow="PERSONAL RECORDS" title="PR จาก Session นี้" description="คำนวณใหม่ทุกครั้งหลังแก้ไข History" />{recordsError ? <p className="mt-4 text-sm text-error">โหลด PR ไม่สำเร็จ จึงไม่แสดงค่าก่อนหน้าแทนข้อมูลปัจจุบัน</p> : <div className="mt-4"><SessionRecordList records={sessionRecords} unit={progressUnit} /></div>}</div> : null}
+      </aside>
     </div>
   </PageFrame>;
 }

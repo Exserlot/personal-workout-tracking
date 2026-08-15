@@ -4,7 +4,7 @@
 
 **Baseline:** commit `169036f`
 
-**Current focus:** M-05B — Basic Progress
+**Current focus:** M-06 — Responsive and Accessibility QA
 
 **MVP target:** M-01 ถึง M-07 ผ่าน Definition of Done
 
@@ -55,15 +55,15 @@ MVP ครอบคลุม Exercise Library, Workout Templates, Routine, Today
 | M-03 Today & Online Workout Execution | `DONE` | Start/Resume → Log → Finish/Discard ทำงานแบบ online-first | M-02 |
 | M-04 Offline Reliability & Ownership | `DONE` | Offline Set mutations, idempotent Session lifecycle, conflict recovery, remote abandon และ P-13 sync visibility | M-03 |
 | M-05A Workout History | `DONE` | Completed Session list/detail/edit/delete plus snapshot hardening | M-03, M-04 contracts |
-| M-05B Basic Progress | `PENDING` | Volume, e1RM, PR และ Exercise trends | M-05A |
+| M-05B Basic Progress | `DONE` | Live volume, e1RM, 3 PR types และ Exercise trends | M-05A |
 | M-06 Responsive & Accessibility QA | `PARTIAL` | Cross-device and accessibility release quality | M-02–M-05 |
 | M-07 Release Hardening | `PENDING` | Production deploy, security, backup และ observability | M-01–M-06 |
 
 ### งานสามลำดับถัดไป
 
-1. คำนวณ Basic Progress, volume, e1RM, PR และ exercise trends ใน M-05B
-2. ปิด responsive/accessibility QA และ release hardening ใน M-06–M-07
-3. เตรียม production deploy, backup และ observability ให้พร้อมใช้งานจริงใน M-07
+1. ปิด responsive/accessibility QA ทุกหน้าใน M-06
+2. เพิ่ม PWA installability, production environment และ observability ใน M-07
+3. เตรียม production deploy, backup/restore rehearsal และ rollback ให้พร้อมใช้งานจริง
 
 ## 4. M-00 — Product and Design Definition
 
@@ -266,19 +266,20 @@ MVP ครอบคลุม Exercise Library, Workout Templates, Routine, Today
 
 ## 10. M-05B — Basic Progress
 
-**Status:** `PENDING` — หน้า P-11/P-12 และ chart ปัจจุบันเป็น static placeholder
+**Status:** `DONE`
 
-- [ ] กำหนด progress query/read model จาก Completed working sets เท่านั้น
-- [ ] Volume = canonical weight × reps
-- [ ] Estimated 1RM ใช้ Epley เฉพาะ 1–10 reps
-- [ ] Best weight, best reps at weight และ PR detection
-- [ ] Exercise trends พร้อมช่วงเวลาและ source-session links
-- [ ] Warm-up, discarded และ soft-deleted Sessions ไม่เข้าการคำนวณ
-- [ ] History edit/delete invalidate หรือคำนวณผลใหม่
-- [ ] KG/LB display conversion ไม่แก้ canonical/source value
-- [ ] Empty/recalculating/error/stale states
-- [ ] Accessible chart summary/table alternative
-- [ ] Unit, query, invalidation และ E2E tests
+- [x] Live progress query/read model จาก Completed Working Sets เท่านั้น
+- [x] Volume = canonical weight × reps
+- [x] Estimated 1RM ใช้ Epley เฉพาะ 1–10 reps
+- [x] Best Weight, Best Reps at Weight และ Estimated 1RM PR แบบ strict improvement
+- [x] Exercise trends พร้อม 30D/90D/1Y/All และ source-session links
+- [x] Warm-up, Drop, failure, discarded และ soft-deleted Sessions ไม่เข้าการคำนวณ
+- [x] History edit/delete สะท้อนผลทันทีโดยไม่ใช้ metrics cache
+- [x] Progress-only KG/LB display preference ไม่แก้ canonical/source value
+- [x] Loading, empty, error และ pending-sync states
+- [x] Accessible SVG chart พร้อม text summary และ data-table alternative
+- [x] Completion Summary และ History Detail แสดง PR จากข้อมูล server ที่ยืนยันแล้ว
+- [x] Unit, repository, database และ Playwright tests
 
 **Exit criteria:** ทุก metric trace กลับ Session ได้ และ edit/delete ทำให้ผลลัพธ์ใหม่ถูกต้องโดยไม่มีค่าค้าง
 
@@ -294,7 +295,7 @@ MVP ครอบคลุม Exercise Library, Workout Templates, Routine, Today
 - [ ] ตรวจ WCAG 2.2 AA contrast และ non-color status cues
 - [ ] ตรวจ reduced motion และ timer feedback
 - [ ] ตรวจ mobile keyboard/safe-area กับทุก sticky action
-- [ ] เพิ่ม chart alternative และ accessible data table
+- [x] เพิ่ม chart alternative และ accessible data table
 - [ ] ตรวจภาษาไทย/อังกฤษ, terminology และข้อความ implementation ที่หลุดสู่ UI
 - [ ] Cross-browser smoke: Chromium, Firefox และ WebKit
 
@@ -329,7 +330,7 @@ MVP ครอบคลุม Exercise Library, Workout Templates, Routine, Today
 | FR-AW-08–09 | UF-06, UF-08, UF-09 | P-07, P-13 | M-04 | `DONE` |
 | FR-AW-10–11 | UF-07 | P-02, P-07, P-08 | M-03, M-04 | `DONE` |
 | FR-HI-01–05 | UF-10 | P-09, P-10 | M-05A | `DONE` |
-| FR-PR-01–05 | UF-11 | P-11, P-12 | M-05B | `PENDING` |
+| FR-PR-01–05 | UF-11 | P-11, P-12 | M-05B | `DONE` |
 | FR-ST-01–03 | UF-06, UF-08, UF-09 | P-07, P-13 | M-03–M-05 | `PARTIAL` |
 | NFR-01–02, 09 | ทุก core flow | P-01–P-13 | M-01, M-06 | `PARTIAL` |
 | NFR-03–04 | UF-05–09 | P-02, P-07, P-13 | M-04 | `DONE` |
@@ -385,7 +386,7 @@ MVP ถือว่าเสร็จเมื่อ:
 | 10 ส.ค. 2026 | M-03 | `847960f` | Online execution, Today redesign, migrations และ regression tests |
 | — | M-04 | — | Completed; next M-05A |
 | 15 ส.ค. 2026 | M-05A.1 | `169036f` | Snapshot-safe History, retry hardening, cache validation และ dirty navigation guard; 130 DB assertions ผ่าน |
-| — | M-05A/M-05B | — | History และ Progress |
+| 15 ส.ค. 2026 | M-05B | migration `202608150002`; 94 unit, 149 DB และ 33 Playwright tests | Live Progress, PR integration และ accessible charts |
 | — | M-06/M-07 | — | QA และ production release |
 
 ## 17. Future backlog

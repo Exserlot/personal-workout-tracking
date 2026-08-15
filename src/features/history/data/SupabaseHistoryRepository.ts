@@ -137,7 +137,13 @@ export class SupabaseHistoryRepository implements HistoryRepository {
     try {
       const result = await this.client.request<unknown>({ method: "POST", path: "rpc/history_update_session", body: { p_operation_id: input.operationId, p_session_id: input.sessionId, p_expected_version: input.expectedVersion, p_draft: historyEditablePayload(input) } });
       const resultVersion = rpcVersion(result);
+      if (resultVersion !== input.expectedVersion + 1) {
+        throw new HistoryRepositoryError("server", "บันทึกแล้วแต่ยืนยัน version ของ History ไม่ได้");
+      }
       const session = await this.getRemoteSession(input.sessionId);
+      if (session && session.version > resultVersion) {
+        throw new HistoryRepositoryError("conflict", "บันทึกเดิมสำเร็จแล้ว แต่ Session มีการแก้ไขรอบใหม่ กรุณาโหลดข้อมูลล่าสุดจาก Server");
+      }
       if (!session || session.version !== resultVersion) throw new HistoryRepositoryError("server", "บันทึกแล้วแต่โหลด History ที่ยืนยันไม่ได้");
       try { await cacheHistoryDetail(authUserId(), session); await cacheHistoryPage(authUserId(), [historySummaryFromSession(session)]); } catch { /* caching is optional */ }
       return session;
@@ -149,7 +155,10 @@ export class SupabaseHistoryRepository implements HistoryRepository {
   async softDeleteSession(input: HistoryDeleteInput): Promise<void> {
     try {
       const result = await this.client.request<unknown>({ method: "POST", path: "rpc/history_soft_delete_session", body: { p_operation_id: input.operationId, p_session_id: input.sessionId, p_expected_version: input.expectedVersion } });
-      rpcVersion(result);
+      const resultVersion = rpcVersion(result);
+      if (resultVersion !== input.expectedVersion + 1) {
+        throw new HistoryRepositoryError("server", "ลบแล้วแต่ยืนยัน version ของ History ไม่ได้");
+      }
       await removeCachedHistory(authUserId(), input.sessionId);
     } catch (error) {
       throw mapError(error, "ลบ History ไม่สำเร็จ");

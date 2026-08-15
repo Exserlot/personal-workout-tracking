@@ -26,6 +26,28 @@ describe("history domain", () => {
     expect(Object.keys(validateHistoryDraft(invalidPending))).toContain("exercise-0-set-0");
   });
 
+  it("keeps a new set detached from template targets and validates cleared status values", () => {
+    const newSet = {
+      ...session.exercises[0].sets[0],
+      id: "new-set",
+      sourceTemplateSetId: null,
+      targetRepsMin: null,
+      targetRepsMax: null,
+      targetWeight: null,
+      targetEffort: null,
+      targetRestSeconds: 0,
+      status: "PENDING" as const,
+      actualWeight: null,
+      actualReps: null,
+      actualEffort: null,
+      actualRestSeconds: null,
+      completedAt: null,
+    };
+    expect(newSet.sourceTemplateSetId).toBeNull();
+    expect(newSet.targetWeight).toBeNull();
+    expect(validateHistoryDraft({ notes: "", exercises: [{ ...session.exercises[0], sets: [newSet] }] })).toEqual({});
+  });
+
   it("compares drafts and formats duration", () => {
     const draft = { notes: session.notes, exercises: session.exercises };
     expect(historyDraftEquals(draft, { notes: session.notes, exercises: session.exercises })).toBe(true);

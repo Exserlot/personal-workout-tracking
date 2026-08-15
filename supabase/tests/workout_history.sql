@@ -1,6 +1,6 @@
 begin;
 
-select plan(23);
+select plan(31);
 
 select has_table('public', 'progress_source_state', 'Progress source state table exists');
 select has_index('public', 'workout_sessions', 'workout_sessions_history_cursor_idx', 'History cursor index exists');
@@ -65,6 +65,20 @@ select is(
 );
 select is((select notes from public.workout_sessions where id = '14141414-1414-4414-8414-141414141414'), 'after', 'History update changes Session notes');
 select is((select actual_reps from public.workout_session_sets where id = '16161616-1616-4616-8616-161616161616'), 9, 'History update changes Set values');
+select is((select exercise_name_snapshot from public.workout_session_exercises where id = '15151515-1515-4515-8515-151515151515'), 'Barbell Bench Press', 'History edit preserves Exercise name snapshot');
+select is((select equipment_code_snapshot from public.workout_session_exercises where id = '15151515-1515-4515-8515-151515151515'), 'barbell', 'History edit preserves equipment snapshot');
+select is((select target_reps_min from public.workout_session_sets where id = '16161616-1616-4616-8616-161616161616'), 8, 'History edit preserves target prescription');
+select is((select completed_at from public.workout_session_sets where id = '16161616-1616-4616-8616-161616161616'), '2026-08-10 10:10:00+00'::timestamptz, 'History edit preserves completion timestamp');
+set local role postgres;
+update public.exercises set name = 'Renamed Bench Press', archived_at = now() where id = '00000000-0000-0000-0000-000000000001';
+set local role authenticated;
+select is(public.history_update_session('21212121-2121-4212-8212-212121212121', '14141414-1414-4414-8414-141414141414', 2, jsonb_build_object('notes', 'archived edit', 'exercises', jsonb_build_array(jsonb_build_object('id', '15151515-1515-4515-8515-151515151515', 'source_exercise_id', '00000000-0000-0000-0000-000000000001', 'sequence_no', 1, 'notes', 'archived cue', 'sets', jsonb_build_array(jsonb_build_object('id', '16161616-1616-4616-8616-161616161616', 'sequence_no', 1, 'set_kind_code', 'WORKING', 'status', 'COMPLETED', 'actual_weight_value', 72.5, 'actual_weight_unit', 'KG', 'actual_reps', 9, 'actual_effort_metric', 'RPE', 'actual_effort_value', 8, 'actual_rest_seconds', 60, 'notes', '')))))), 3, 'History edit works when the source Exercise is archived');
+select is((select exercise_name_snapshot from public.workout_session_exercises where id = '15151515-1515-4515-8515-151515151515'), 'Barbell Bench Press', 'Archived source cannot rewrite the Exercise snapshot');
+select is((select equipment_code_snapshot from public.workout_session_exercises where id = '15151515-1515-4515-8515-151515151515'), 'barbell', 'Archived source cannot rewrite equipment snapshot');
+select is((select muscle_name_snapshot from public.workout_session_exercise_muscles where session_exercise_id = '15151515-1515-4515-8515-151515151515' order by sequence_no limit 1), 'Chest', 'Archived source cannot rewrite muscle snapshot');
+set local role postgres;
+update public.exercises set name = 'Barbell Bench Press', archived_at = null where id = '00000000-0000-0000-0000-000000000001';
+set local role authenticated;
 select is(public.history_update_session('17171717-1717-4717-8717-171717171717', '14141414-1414-4414-8414-141414141414', 1, jsonb_build_object('notes', 'after', 'exercises', jsonb_build_array(jsonb_build_object('id', '15151515-1515-4515-8515-151515151515', 'source_exercise_id', '00000000-0000-0000-0000-000000000001', 'sequence_no', 1, 'notes', 'edited cue', 'sets', jsonb_build_array(jsonb_build_object('id', '16161616-1616-4616-8616-161616161616', 'sequence_no', 1, 'set_kind_code', 'WORKING', 'is_to_failure', false, 'target_reps_min', 8, 'target_reps_max', 10, 'target_rest_seconds', 90, 'actual_weight_value', 72.5, 'actual_weight_unit', 'KG', 'actual_weight_kg', 72.5, 'actual_reps', 9, 'actual_effort_metric', 'RPE', 'actual_effort_value', 8, 'status', 'COMPLETED', 'completed_at', '2026-08-10 10:10:00+00', 'notes', '')))))), 2, 'History update retry is idempotent');
 select throws_ok(
   $$select public.history_update_session('18181818-1818-4818-8818-181818181818', '14141414-1414-4414-8414-141414141414', 1, jsonb_build_object('notes', 'stale', 'exercises', jsonb_build_array()))$$,
@@ -77,11 +91,11 @@ select throws_ok(
   'History operation payload mismatch is rejected'
 );
 select is((select revision::int from public.progress_source_state where user_id = '12121212-1212-4212-8212-121212121212'), 1, 'History edit invalidates progress source once');
-select is(public.history_soft_delete_session('19191919-1919-4919-8919-191919191919', '14141414-1414-4414-8414-141414141414', 2), 3, 'History soft delete increments version');
+select is(public.history_soft_delete_session('19191919-1919-4919-8919-191919191919', '14141414-1414-4414-8414-141414141414', 3), 4, 'History soft delete increments version');
 select is((select count(*)::int from public.history_list_sessions(null, null, null, null, 20)), 0, 'Soft-deleted Session disappears from History');
 select is((select revision::int from public.progress_source_state where user_id = '12121212-1212-4212-8212-121212121212'), 2, 'History delete invalidates progress source once');
 set local role postgres;
-select is((select count(*)::int from public.mutation_receipts where aggregate_id = '14141414-1414-4414-8414-141414141414' and aggregate_type = 'WORKOUT_HISTORY'), 2, 'History update and delete each create one receipt');
+select is((select count(*)::int from public.mutation_receipts where aggregate_id = '14141414-1414-4414-8414-141414141414' and aggregate_type = 'WORKOUT_HISTORY'), 3, 'History updates and delete each create one receipt');
 set local role authenticated;
 
 select set_config('request.jwt.claim.sub', 'abababab-abab-abab-abab-abababababab', true);

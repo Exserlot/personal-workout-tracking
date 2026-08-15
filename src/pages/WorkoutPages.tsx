@@ -9,6 +9,7 @@ import {
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { Icon } from "../components/icons/Icon";
 import { Button } from "../components/ui/Button";
+import { ModalDialog } from "../components/ui/ModalDialog";
 import { Divider } from "../components/ui/Divider";
 import { EmptyState } from "../components/ui/EmptyState";
 import { PageFrame } from "../components/layout/PageFrame";
@@ -44,6 +45,7 @@ import {
     pauseTimer,
     remainingTimerSeconds,
     resetTimer,
+    resumeTimer,
     skipTimer,
     timerAfterComplete,
     validateSetDraft,
@@ -160,25 +162,16 @@ function ExercisePicker({
         status: "active",
     });
     return (
-        <div
-            className="fixed inset-0 z-40 flex bg-canvas/90 tablet:items-center tablet:justify-center tablet:p-4"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="exercise-picker-title"
-        >
-            <div className="flex h-[100dvh] max-h-[100dvh] w-full max-w-2xl flex-col overflow-hidden border border-line bg-surface tablet:h-[min(88dvh,760px)] tablet:max-h-[88dvh] overflow-visible">
+        <ModalDialog open onClose={onClose} title="เพิ่มท่าออกกำลังกาย" description="เลือกท่าที่ active เพื่อเพิ่มลงใน Session" variant="sheet" className="flex h-[100dvh] max-h-[100dvh] max-w-2xl flex-col overflow-hidden p-0 tablet:h-[min(88dvh,760px)] tablet:max-h-[88dvh]" labelledBy="exercise-picker-title" titleClassName="sr-only">
+            <div className="contents">
                 <header className="sticky top-0 z-10 grid shrink-0 grid-cols-[minmax(0,1fr)_auto] gap-x-2 gap-y-2 border-b border-line bg-surface px-5 py-4 tablet:px-6 tablet:py-5 [&>div:first-child]:col-span-2 [&>label]:col-span-2 [&>input]:min-w-0 [&>div:last-child]:self-end [&_button_svg]:h-6 [&_button_svg]:w-6">
                     <div className="flex items-start justify-between gap-4">
                         <div>
                             <p className="text-xs font-semibold tracking-[0.08em] text-accent">
                                 SESSION EXERCISE
                             </p>
-                            <h2
-                                id="exercise-picker-title"
-                                className="mt-2 text-h3"
-                            >
-                                เพิ่มท่าออกกำลังกาย
-                            </h2>
+                            <p className="mt-2 text-h3 text-balance">เพิ่มท่าออกกำลังกาย</p>
+                            <p className="mt-2 text-sm text-ink-muted">เลือกท่าจาก Exercise Library</p>
                         </div>
                         <Button
                             variant="quiet"
@@ -239,7 +232,7 @@ function ExercisePicker({
                     </div>
                 </div>
             </div>
-        </div>
+        </ModalDialog>
     );
 }
 
@@ -856,6 +849,7 @@ export function ActiveWorkoutPage() {
         return (
             <PageFrame
                 pageId="P-07"
+                eyebrow="P-07 · ACTIVE WORKOUT"
                 title="เปิด Active Workout ไม่ได้"
                 description={error}
             >
@@ -875,6 +869,7 @@ export function ActiveWorkoutPage() {
         return (
             <PageFrame
                 pageId="P-07"
+                eyebrow="P-07 · ACTIVE WORKOUT"
                 title="ยังไม่มี Active Workout"
                 description="เริ่มจาก Today เมื่อมี Routine หรือเลือก Ad-hoc Workout"
             >
@@ -1221,6 +1216,17 @@ export function ActiveWorkoutPage() {
                                 next,
                             );
                         }}
+                        onResume={() => {
+                            const next = resumeTimer(timer);
+                            setClock(Date.now());
+                            setTimer(next);
+                            persistCache(
+                                session,
+                                draftsRef.current,
+                                currentExerciseId,
+                                next,
+                            );
+                        }}
                         onSkip={() => {
                             const next = skipTimer(timer);
                             setTimer(next);
@@ -1339,6 +1345,7 @@ export function CompletionSummaryPage() {
         return (
             <PageFrame
                 pageId="P-08"
+                eyebrow="P-08 · COMPLETION SUMMARY"
                 title="โหลด Summary ไม่สำเร็จ"
                 description={error}
             >
@@ -1351,6 +1358,7 @@ export function CompletionSummaryPage() {
         return (
             <PageFrame
                 pageId="P-08"
+                eyebrow="P-08 · COMPLETION SUMMARY"
                 title="Completion Summary"
                 description="กำลังคำนวณผลการฝึก…"
             >
@@ -1362,6 +1370,7 @@ export function CompletionSummaryPage() {
     return (
         <PageFrame
             pageId="P-08"
+            eyebrow="P-08 · COMPLETION SUMMARY"
             title="สรุปการฝึก"
             description={`${summary.templateName ?? "Ad-hoc Workout"} · ${new Date(summary.completedAt).toLocaleString("th-TH")}`}
             action={

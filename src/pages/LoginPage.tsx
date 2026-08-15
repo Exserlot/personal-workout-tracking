@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "../components/ui/Button";
 import { Input } from "../components/ui/Input";
@@ -17,7 +17,13 @@ export function LoginPage() {
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const headingRef = useRef<HTMLHeadingElement>(null);
   const from = (location.state as LoginLocationState | null)?.from ?? "/today";
+
+  useEffect(() => {
+    document.title = "เข้าสู่ระบบ · FORM";
+    headingRef.current?.focus();
+  }, []);
 
   if (status === "authenticated") return <Navigate to={from} replace />;
 
@@ -41,7 +47,9 @@ export function LoginPage() {
   }
 
   return (
-    <main className="grid min-h-dvh bg-canvas tablet:grid-cols-8 desktop:grid-cols-12">
+    <>
+      <a className="skip-link" href="#main-content" onClick={(event) => { event.preventDefault(); const focusMain = () => document.getElementById("main-content")?.focus(); focusMain(); window.setTimeout(focusMain, 0); }}>ข้ามไปยังเนื้อหาหลัก</a>
+      <main id="main-content" tabIndex={-1} className="grid min-h-dvh bg-canvas tablet:grid-cols-8 desktop:grid-cols-12">
       <section className="flex min-h-[36vh] flex-col justify-between border-b border-line bg-recessed p-6 tablet:col-span-3 tablet:min-h-dvh tablet:border-b-0 tablet:border-r desktop:col-span-5 desktop:p-10">
         <div>
           <p className="text-2xl font-bold tracking-[-0.03em]">FORM</p>
@@ -49,7 +57,7 @@ export function LoginPage() {
         </div>
         <div className="mt-16 max-w-xl">
           <p className="text-xs font-semibold tracking-[0.08em] text-accent">P-01 · OWNER ACCESS</p>
-          <h1 className="mt-4 text-[36px] font-bold leading-10 tracking-[-0.03em] tablet:text-display-lg desktop:text-display-xl">
+          <h1 ref={headingRef} tabIndex={-1} className="mt-4 outline-none text-[36px] font-bold leading-10 tracking-[-0.03em] tablet:text-display-lg desktop:text-display-xl">
             ฝึกอย่างมีระบบ<br />เห็นความก้าวหน้าจริง
           </h1>
         </div>
@@ -61,7 +69,7 @@ export function LoginPage() {
           <p className="mt-3 text-base leading-7 text-ink-secondary">
             ใช้บัญชี owner ที่สร้างไว้ใน Supabase ไม่มีการสมัครสมาชิกสาธารณะ
           </p>
-          <form className="mt-8 space-y-5" onSubmit={handleSubmit} noValidate>
+          <form id="login-form" tabIndex={-1} className="mt-8 space-y-5 outline-none" onSubmit={handleSubmit} noValidate>
             <Input
               label="อีเมล"
               type="email"
@@ -90,6 +98,7 @@ export function LoginPage() {
           </form>
         </div>
       </section>
-    </main>
+      </main>
+    </>
   );
 }

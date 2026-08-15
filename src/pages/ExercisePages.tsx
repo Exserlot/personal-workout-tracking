@@ -160,21 +160,24 @@ export function ExerciseLibraryPage() {
               <ExerciseResults exercises={exercises} />
             ) : null}
             {loadState === "success" && exercises.length === 0 ? (
-              <EmptyState
-                marker="00"
-                title={hasActiveExerciseFilters(query) ? "ไม่พบท่าฝึกที่ตรงกับตัวกรอง" : "ยังไม่มีท่าฝึก"}
-                description={
-                  hasActiveExerciseFilters(query)
-                    ? "ลองล้างคำค้นหรือเปลี่ยนกลุ่มกล้ามเนื้อ อุปกรณ์ และสถานะ"
-                    : "สร้าง Custom Exercise แรกเพื่อเริ่มจัดคลังท่าฝึก"
-                }
-                action={
-                  hasActiveExerciseFilters(query) ? (
-                    <Button variant="secondary" onClick={() => setQuery(clearExerciseFilters())}><Icon name="close" className="h-4 w-4" />ล้างตัวกรอง</Button>
-                  ) : undefined
-                }
-                showTopRule={false}
-              />
+              <>
+                <div id="exercise-results" className="sr-only" />
+                <EmptyState
+                  marker="00"
+                  title={hasActiveExerciseFilters(query) ? "ไม่พบท่าฝึกที่ตรงกับตัวกรอง" : "ยังไม่มีท่าฝึก"}
+                  description={
+                    hasActiveExerciseFilters(query)
+                      ? "ลองล้างคำค้นหรือเปลี่ยนกลุ่มกล้ามเนื้อ อุปกรณ์ และสถานะ"
+                      : "สร้าง Custom Exercise แรกเพื่อเริ่มจัดคลังท่าฝึก"
+                  }
+                  action={
+                    hasActiveExerciseFilters(query) ? (
+                      <Button variant="secondary" onClick={() => setQuery(clearExerciseFilters())}><Icon name="close" className="h-4 w-4" />ล้างตัวกรอง</Button>
+                    ) : undefined
+                  }
+                  showTopRule={false}
+                />
+              </>
             ) : null}
           </div>
         </section>

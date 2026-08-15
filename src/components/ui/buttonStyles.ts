@@ -23,7 +23,7 @@ const variantClasses: Record<ButtonVariant, string> = {
 };
 
 const sizeClasses: Record<ButtonSize, string> = {
-  compact: "min-h-9 px-3 text-sm",
+  compact: "min-h-11 px-3 text-sm desktop:min-h-9",
   default: "min-h-11 px-4 text-sm",
   large: "min-h-12 px-5 text-base",
 };

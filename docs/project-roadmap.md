@@ -4,7 +4,7 @@
 
 **Baseline:** commit `169036f`
 
-**Current focus:** M-06 — Responsive and Accessibility QA
+**Current focus:** M-06 — Responsive and Accessibility QA (verification)
 
 **MVP target:** M-01 ถึง M-07 ผ่าน Definition of Done
 
@@ -285,7 +285,7 @@ MVP ครอบคลุม Exercise Library, Workout Templates, Routine, Today
 
 ## 11. M-06 — Responsive and Accessibility QA
 
-**Status:** `PARTIAL` — P-02–P-07 ผ่าน redesign หลักแล้ว แต่ P-08–P-13 ยังไม่ครบ
+**Status:** `PARTIAL` — shared accessibility foundation และ automated Chromium/Axe/WebKit gates ผ่าน; Firefox runner และ manual device checks ยังรอปิด
 
 - [x] Swiss dark tokens, grid, typography และ minimal-shadow primitives
 - [x] Today, Exercise, Planning และ Active Workout responsive composition
@@ -298,6 +298,8 @@ MVP ครอบคลุม Exercise Library, Workout Templates, Routine, Today
 - [x] เพิ่ม chart alternative และ accessible data table
 - [ ] ตรวจภาษาไทย/อังกฤษ, terminology และข้อความ implementation ที่หลุดสู่ UI
 - [ ] Cross-browser smoke: Chromium, Firefox และ WebKit
+
+**QA evidence:** [M-06 QA Report](m06-qa-report.md) — automated baseline ผ่านตามรายการ แต่ยังไม่อ้างว่าเป็น physical-device หรือ screen-reader sign-off
 
 **Exit criteria:** Core flows ใช้ keyboard/touch ได้, ไม่มี horizontal overflow, focus ไม่หาย และข้อมูลสำคัญเข้าถึงได้โดยไม่พึ่งสีหรือกราฟเพียงอย่างเดียว
 

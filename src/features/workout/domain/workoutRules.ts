@@ -86,6 +86,15 @@ export function resetTimer(timer: { status: "idle" | "running" | "paused"; durat
   return timerAfterComplete(timer.durationSeconds, now);
 }
 
+export function resumeTimer(timer: { status: "idle" | "running" | "paused"; durationSeconds: number; endsAt: number | null; pausedRemainingSeconds: number }, now = Date.now()) {
+  if (timer.status !== "paused") return timer;
+  return {
+    ...timer,
+    status: "running" as const,
+    endsAt: now + timer.pausedRemainingSeconds * 1_000,
+  };
+}
+
 export function skipTimer(timer: { status: "idle" | "running" | "paused"; durationSeconds: number; endsAt: number | null; pausedRemainingSeconds: number }) {
   return { ...timer, status: "idle" as const, endsAt: null, pausedRemainingSeconds: 0 };
 }

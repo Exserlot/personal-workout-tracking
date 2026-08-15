@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { commandValues, draftFromSet, pauseTimer, remainingTimerSeconds, skipTimer, timerAfterComplete, validateSetDraft } from "./workoutRules";
+import { commandValues, draftFromSet, pauseTimer, remainingTimerSeconds, resumeTimer, skipTimer, timerAfterComplete, validateSetDraft } from "./workoutRules";
 
 describe("online workout set rules", () => {
   it("requires weight and positive integer reps but keeps effort optional", () => {
@@ -12,11 +12,13 @@ describe("online workout set rules", () => {
     expect(commandValues({ weight: "160", weightUnit: "LB", reps: "5", effortMetric: "RIR", effort: "2" }).actualWeight.kg).toBe(72.5748);
   });
 
-  it("rest timer supports pause, reset and skip", () => {
+  it("rest timer supports pause, resume and skip", () => {
     const running = timerAfterComplete(90, 1_000);
     expect(remainingTimerSeconds(running, 31_000)).toBe(60);
     const paused = pauseTimer(running, 31_000);
     expect(paused).toMatchObject({ status: "paused", pausedRemainingSeconds: 60, endsAt: null });
+    const resumed = resumeTimer(paused, 40_000);
+    expect(resumed).toMatchObject({ status: "running", pausedRemainingSeconds: 60, endsAt: 100_000 });
     expect(skipTimer(paused).status).toBe("idle");
   });
 

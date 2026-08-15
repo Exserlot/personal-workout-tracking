@@ -7,6 +7,10 @@ import { Button } from "../ui/Button";
 import { Icon } from "../icons/Icon";
 import { cn } from "../../lib/cn";
 
+function SkipLink() {
+  return <a className="skip-link" href="#main-content" onClick={(event) => { event.preventDefault(); const focusMain = () => { const main = document.getElementById("main-content"); main?.focus(); main?.scrollIntoView({ block: "start" }); }; focusMain(); window.setTimeout(focusMain, 0); }}>ข้ามไปยังเนื้อหาหลัก</a>;
+}
+
 function CompactHeader({ onMenu, menuRef }: { onMenu: () => void; menuRef: React.RefObject<HTMLButtonElement | null> }) {
   return (
     <header className="fixed inset-x-0 top-0 z-40 flex h-16 items-center justify-between border-b border-line bg-recessed px-4 tablet:px-6 desktop:hidden">
@@ -30,6 +34,7 @@ export function AppShell() {
 
   return (
     <div className="min-h-dvh bg-canvas text-ink">
+      <SkipLink />
       <DesktopNavigation />
       <div className={cn(isMobileFocusMode && "hidden tablet:block")}>
         <CompactHeader onMenu={() => setDrawerOpen(true)} menuRef={menuRef} />
@@ -38,6 +43,7 @@ export function AppShell() {
 
       <main
         id="main-content"
+        tabIndex={-1}
         className={cn(
           "min-h-dvh min-w-0 desktop:pl-[var(--shell-desktop-rail)]",
           isMobileFocusMode

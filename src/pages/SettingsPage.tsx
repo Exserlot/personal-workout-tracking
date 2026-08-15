@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { PageFrame } from "../components/layout/PageFrame";
 import { Button } from "../components/ui/Button";
 import { Divider } from "../components/ui/Divider";
 import { Input } from "../components/ui/Input";
+import { ModalDialog } from "../components/ui/ModalDialog";
 import { SectionHeader } from "../components/ui/SectionHeader";
 import { useAuth } from "../features/auth/AuthContext";
 import { useWorkoutSync } from "../features/workout/WorkoutSyncContext";
@@ -39,8 +40,6 @@ function sessionMetrics(session: WorkoutConflictDetail["localSession"]) {
   };
 }
 
-const FOCUSABLE_SELECTOR = "button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])";
-
 export function SettingsPage() {
   const { session, signOut } = useAuth();
   const sync = useWorkoutSync();
@@ -48,7 +47,6 @@ export function SettingsPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const deviceId = useMemo(() => getDeviceId(), []);
-  const dialogRef = useRef<HTMLDivElement>(null);
   const userId = session?.user.id ?? "";
   const [overview, setOverview] = useState(sync.getOverviewSnapshot());
   const [detail, setDetail] = useState<WorkoutConflictDetail | null>(null);
@@ -62,37 +60,6 @@ export function SettingsPage() {
   const [logoutOpen, setLogoutOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const [syncingBeforeLogout, setSyncingBeforeLogout] = useState(false);
-
-  useEffect(() => {
-    if (!abandonOpen && !logoutOpen) return undefined;
-    const previousFocus = document.activeElement as HTMLElement | null;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    const focusFirst = () => dialogRef.current?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR)?.focus();
-    const focusTimer = window.setTimeout(focusFirst, 0);
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        if (abandonOpen && !busy) { setAbandonOpen(false); setAbandonText(""); setAbandonOperationId(null); }
-        if (logoutOpen && !signingOut) setLogoutOpen(false);
-        return;
-      }
-      if (event.key !== "Tab") return;
-      const focusable = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR) ?? []);
-      if (focusable.length === 0) return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
-      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
-    };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.clearTimeout(focusTimer);
-      document.removeEventListener("keydown", handleKeyDown);
-      document.body.style.overflow = previousOverflow;
-      previousFocus?.focus();
-    };
-  }, [abandonOpen, busy, logoutOpen, signingOut]);
 
   const reload = useCallback(async () => {
     setOverview({ ...sync.getOverviewSnapshot() });
@@ -213,8 +180,12 @@ export function SettingsPage() {
         <aside className="col-span-4 mt-10 min-w-0 tablet:col-span-8 tablet:mt-0 desktop:col-span-4"><SectionHeader eyebrow="RECOVERY ARCHIVE" title="สำเนาที่เก็บไว้" description="ข้อมูล local ที่เคยมี conflict จะไม่ถูกลบทันที" showTopRule={false} />{archives.length === 0 && rawArchives.length === 0 ? <p className="border-b border-line py-5 text-sm text-ink-muted">ยังไม่มี Recovery Archive</p> : <>{archives.length > 0 ? <div className="divide-y divide-line border-b border-line">{archives.map((bundle) => <div key={bundle.id} className="py-4"><p className="font-semibold text-ink">{bundle.localSession.templateNameSnapshot ?? "Workout Session"}</p><p className="mt-1 text-sm text-ink-secondary">{formatDate(bundle.archivedAt)} · {bundle.reason}</p><Button className="mt-3" variant="quiet" size="compact" onClick={() => exportArchive(bundle)}>Export JSON</Button></div>)}</div> : null}{rawArchives.length > 0 ? <div className="mt-4 divide-y divide-line border-y border-line"><p className="px-1 py-3 text-xs font-semibold uppercase tracking-[0.08em] text-accent">ข้อมูลคิวที่ต้องกู้คืน</p>{rawArchives.map((bundle) => <div key={bundle.id} className="py-4"><p className="font-semibold text-ink">ข้อมูลที่ตรวจสอบไม่ได้</p><p className="mt-1 text-sm text-ink-secondary">{formatDate(bundle.archivedAt)} · {bundle.reason}</p><Button className="mt-3" variant="quiet" size="compact" onClick={() => exportRawArchive(bundle)}>Export JSON</Button></div>)}</div> : null}</>}<div className="mt-10 border-t border-line pt-6"><SectionHeader eyebrow="OWNER ACCOUNT" title="บัญชีที่กำลังใช้งาน" showTopRule={false} /><p className="mt-4 break-all text-sm text-ink-secondary">{session?.user.email}</p><Button className="mt-4" variant="secondary" onClick={() => void handleSignOut()} disabled={signingOut}>{signingOut ? "กำลังออกจากระบบ…" : "ออกจากระบบ"}</Button></div></aside>
       </div>
       {error ? <p role="alert" className="mt-6 border-l-2 border-error pl-4 text-sm text-error">{error}</p> : null}
-      {abandonOpen && detail ? <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) { setAbandonOpen(false); setAbandonText(""); setAbandonOperationId(null); } }}><div ref={dialogRef} className="w-full max-w-lg border border-line bg-surface p-6" role="dialog" aria-modal="true" aria-labelledby="abandon-title"><h2 id="abandon-title" className="text-h2 text-ink">Abandon Server Session?</h2><p className="mt-3 text-sm text-ink-secondary">การกระทำนี้จะปิด Session บน server และไม่เลื่อน Routine ข้อมูล local จะถูกเก็บไว้ใน Recovery Archive</p><Input className="mt-5" label={`พิมพ์ “${sessionName(detail)}” เพื่อยืนยัน`} value={abandonText} onChange={(event) => setAbandonText(event.target.value)} /><div className="mt-5 flex justify-end gap-3"><Button variant="quiet" onClick={() => { setAbandonOpen(false); setAbandonText(""); setAbandonOperationId(null); }}>ยกเลิก</Button><Button variant="destructive" disabled={busy || abandonText.trim() !== sessionName(detail)} onClick={() => void remoteAbandon()}>ยืนยัน Abandon</Button></div></div></div> : null}
-      {logoutOpen ? <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !signingOut && !syncingBeforeLogout) setLogoutOpen(false); }}><div ref={dialogRef} className="w-full max-w-lg border border-line bg-surface p-6" role="dialog" aria-modal="true" aria-labelledby="logout-title"><h2 id="logout-title" className="text-h2 text-ink">มีข้อมูลรอซิงก์</h2><p className="mt-3 text-sm text-ink-secondary">ออกจากระบบได้ แต่ข้อมูลจะยังคงอยู่ในเครื่องและจะไม่ถูกส่งจนกว่าจะเข้าสู่ระบบบัญชีเดิม</p><div className="mt-5 flex flex-wrap justify-end gap-3"><Button variant="quiet" disabled={syncingBeforeLogout} onClick={() => setLogoutOpen(false)}>ยกเลิก</Button><Button variant="secondary" disabled={syncingBeforeLogout} onClick={() => void syncBeforeSignOut()}>{syncingBeforeLogout ? "กำลังซิงก์…" : "ซิงก์ก่อนออก"}</Button><Button variant="destructive" disabled={syncingBeforeLogout} onClick={() => { setLogoutOpen(false); void handleSignOut(true); }}>ออกจากระบบโดยเก็บข้อมูลไว้</Button></div></div></div> : null}
+      <ModalDialog open={abandonOpen && Boolean(detail)} onClose={() => { if (!busy) { setAbandonOpen(false); setAbandonText(""); setAbandonOperationId(null); } }} title="Abandon Server Session?" description="การกระทำนี้จะปิด Session บน server และไม่เลื่อน Routine ข้อมูล local จะถูกเก็บไว้ใน Recovery Archive" role="alertdialog" closeOnBackdrop={!busy}>
+        {detail ? <><Input className="mt-5" label={`พิมพ์ “${sessionName(detail)}” เพื่อยืนยัน`} value={abandonText} onChange={(event) => setAbandonText(event.target.value)} /><div className="mt-5 flex justify-end gap-3"><Button variant="quiet" onClick={() => { setAbandonOpen(false); setAbandonText(""); setAbandonOperationId(null); }}>ยกเลิก</Button><Button variant="destructive" disabled={busy || abandonText.trim() !== sessionName(detail)} onClick={() => void remoteAbandon()}>ยืนยัน Abandon</Button></div></> : null}
+      </ModalDialog>
+      <ModalDialog open={logoutOpen} onClose={() => { if (!signingOut && !syncingBeforeLogout) setLogoutOpen(false); }} title="มีข้อมูลรอซิงก์" description="ออกจากระบบได้ แต่ข้อมูลจะยังคงอยู่ในเครื่องและจะไม่ถูกส่งจนกว่าจะเข้าสู่ระบบบัญชีเดิม" role="alertdialog" closeOnBackdrop={!signingOut && !syncingBeforeLogout}>
+        <div className="mt-5 flex flex-wrap justify-end gap-3"><Button variant="quiet" disabled={syncingBeforeLogout} onClick={() => setLogoutOpen(false)}>ยกเลิก</Button><Button variant="secondary" disabled={syncingBeforeLogout} onClick={() => void syncBeforeSignOut()}>{syncingBeforeLogout ? "กำลังซิงก์…" : "ซิงก์ก่อนออก"}</Button><Button variant="destructive" disabled={syncingBeforeLogout} onClick={() => { setLogoutOpen(false); void handleSignOut(true); }}>ออกจากระบบโดยเก็บข้อมูลไว้</Button></div>
+      </ModalDialog>
     </PageFrame>
   );
 }

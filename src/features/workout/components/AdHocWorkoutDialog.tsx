@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { Icon } from "../../../components/icons/Icon";
 import { Button } from "../../../components/ui/Button";
 import { Input } from "../../../components/ui/Input";
+import { ModalDialog } from "../../../components/ui/ModalDialog";
 import type { WorkoutTemplateSummary } from "../../planning/domain/planning";
 import { filterAdHocTemplates } from "../domain/todayRules";
 
@@ -15,15 +16,6 @@ interface AdHocWorkoutDialogProps {
   onStart: (template: WorkoutTemplateSummary | null) => void;
 }
 
-const FOCUSABLE_SELECTOR = [
-  "button:not([disabled])",
-  "a[href]",
-  "input:not([disabled])",
-  "select:not([disabled])",
-  "textarea:not([disabled])",
-  "[tabindex]:not([tabindex='-1'])",
-].join(",");
-
 export function AdHocWorkoutDialog({
   templates,
   loading,
@@ -34,88 +26,27 @@ export function AdHocWorkoutDialog({
   onStart,
 }: AdHocWorkoutDialogProps) {
   const [search, setSearch] = useState("");
-  const dialogRef = useRef<HTMLDivElement>(null);
-  const closeRef = useRef<HTMLButtonElement>(null);
-  const busyRef = useRef(busy);
   const filteredTemplates = useMemo(
     () => filterAdHocTemplates(templates, search),
     [search, templates],
   );
 
-  useEffect(() => {
-    busyRef.current = busy;
-  }, [busy]);
-
-  useEffect(() => {
-    const previousFocus = document.activeElement as HTMLElement | null;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    closeRef.current?.focus();
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        if (!busyRef.current) onClose();
-        return;
-      }
-      if (event.key !== "Tab") return;
-      const focusable = Array.from(
-        dialogRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR) ?? [],
-      );
-      if (focusable.length === 0) return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("keydown", handleKeyDown);
-      document.body.style.overflow = previousOverflow;
-      previousFocus?.focus();
-    };
-  }, [onClose]);
-
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end bg-canvas/90 tablet:items-center tablet:justify-center tablet:p-6"
-      role="presentation"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget && !busyRef.current) onClose();
-      }}
-    >
-      <div
-        ref={dialogRef}
-        data-testid="ad-hoc-dialog"
-        className="safe-bottom flex max-h-[92dvh] w-full flex-col border border-line bg-surface tablet:max-h-[82dvh] tablet:max-w-xl"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="ad-hoc-title"
-      >
+    <ModalDialog open onClose={() => { if (!busy) onClose(); }} title="เลือกการฝึกแบบอิสระ" description="การฝึกนี้จะไม่เลื่อนลำดับ Routine" variant="sheet" className="flex max-h-[92dvh] max-w-xl flex-col p-0 tablet:max-h-[82dvh]" labelledBy="ad-hoc-title" describedBy="ad-hoc-description" titleClassName="sr-only">
+      <div data-testid="ad-hoc-dialog" className="contents">
         <header className="shrink-0 border-b border-line bg-surface px-4 py-4 tablet:px-6">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
               <p className="text-xs font-semibold tracking-[0.08em] text-accent">
                 AD-HOC WORKOUT
               </p>
-              <h2 id="ad-hoc-title" className="mt-2 text-h3 text-balance">
-                เลือกการฝึกแบบอิสระ
-              </h2>
-              <p className="mt-2 text-sm leading-6 text-ink-secondary">
-                การฝึกนี้จะไม่เลื่อนลำดับ Routine
-              </p>
+              <p className="mt-2 text-h3 text-balance">เลือกการฝึกแบบอิสระ</p>
+              <p className="mt-2 text-xs text-ink-muted">เลือก Template หรือเริ่ม Session เปล่า</p>
             </div>
             <Button
-              ref={closeRef}
               variant="secondary"
               className="h-11 w-11 shrink-0 px-0"
-              onClick={onClose}
+              onClick={() => { if (!busy) onClose(); }}
               disabled={busy}
               aria-label="ปิดตัวเลือก Ad-hoc Workout"
             >
@@ -194,6 +125,6 @@ export function AdHocWorkoutDialog({
           </div>
         </div>
       </div>
-    </div>
+    </ModalDialog>
   );
 }

@@ -6,6 +6,7 @@ function RailLink({ index, label, to }: { index: string; label: string; to: stri
   return (
     <NavLink
       to={to}
+      aria-label={label}
       className={({ isActive }) =>
         cn(
           "group relative grid min-h-12 grid-cols-[2rem_minmax(0,1fr)] items-center gap-2 border-l-2 px-3 text-sm transition-colors wide:px-5",
@@ -41,12 +42,6 @@ export function DesktopNavigation() {
         {utilityNavigation.map((item) => (
           <RailLink key={item.to} {...item} />
         ))}
-        <div className="mx-4 mt-4 hidden border-t border-line-subtle pt-4 wide:block">
-          <p className="flex items-center gap-2 text-xs text-ink-muted">
-            <span className="h-2 w-2 rounded-full bg-success" aria-hidden="true" />
-            STATIC PREVIEW
-          </p>
-        </div>
       </div>
     </aside>
   );

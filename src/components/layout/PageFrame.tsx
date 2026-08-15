@@ -1,9 +1,11 @@
 import type { ReactNode } from "react";
+import { useEffect, useId, useLayoutEffect } from "react";
+import { useLocation } from "react-router-dom";
 import { cn } from "../../lib/cn";
 
 interface PageFrameProps {
   pageId: string;
-  eyebrow?: string;
+  eyebrow: string;
   title: string;
   description: string;
   action?: ReactNode;
@@ -12,14 +14,24 @@ interface PageFrameProps {
 }
 
 export function PageFrame({ pageId, eyebrow, title, description, action, children, className }: PageFrameProps) {
+  void pageId;
+  const location = useLocation();
+  const headingId = useId();
+  useEffect(() => {
+    document.title = `${title} · FORM`;
+  }, [title]);
+  useLayoutEffect(() => {
+    const heading = document.getElementById(headingId);
+    if (!document.activeElement?.classList.contains("skip-link")) heading?.focus();
+  }, [headingId, location.pathname]);
   return (
     <div className={cn("mx-auto w-full max-w-content px-4 py-6 tablet:px-6 tablet:py-8 desktop:px-8 desktop:py-10 large:px-12", className)}>
       <header className="page-grid items-end border-b border-line pb-6 tablet:pb-8">
         <div className="col-span-4 min-w-0 tablet:col-span-6 desktop:col-span-8">
           <p className="mb-3 text-xs font-semibold tracking-[0.08em] text-accent">
-            {eyebrow ?? `STATIC PREVIEW · ${pageId}`}
+            {eyebrow}
           </p>
-          <h1 className="text-[30px] font-bold leading-9 tracking-[-0.025em] text-balance tablet:text-h1 desktop:text-display-lg">
+          <h1 id={headingId} tabIndex={-1} className="text-[30px] font-bold leading-9 tracking-[-0.025em] text-balance outline-none tablet:text-h1 desktop:text-display-lg">
             {title}
           </h1>
           <p className="mt-3 max-w-2xl text-base leading-7 text-ink-secondary">{description}</p>

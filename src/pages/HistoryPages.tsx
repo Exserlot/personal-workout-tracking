@@ -4,6 +4,7 @@ import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, Plus, Trash2 } from "lucide
 import { PageFrame } from "../components/layout/PageFrame";
 import { SectionHeader } from "../components/ui/SectionHeader";
 import { StatBlock } from "../components/ui/StatBlock";
+import { ModalDialog } from "../components/ui/ModalDialog";
 import { EmptyState } from "../components/ui/EmptyState";
 import { buttonStyles } from "../components/ui/buttonStyles";
 import { useHistoryRepository } from "../features/history/HistoryRepositoryContext";
@@ -49,37 +50,9 @@ interface ConfirmationRequest {
 }
 
 function ConfirmationDialog({ request, onCancel }: { request: ConfirmationRequest | null; onCancel: () => void }) {
-  const dialogRef = useRef<HTMLDivElement>(null);
-  const cancelRef = useRef<HTMLButtonElement>(null);
-  const previousFocus = useRef<HTMLElement | null>(null);
-  useEffect(() => {
-    if (!request) return;
-    previousFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    cancelRef.current?.focus();
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") { event.preventDefault(); onCancel(); return; }
-      if (event.key !== "Tab" || !dialogRef.current) return;
-      const focusable = Array.from(dialogRef.current.querySelectorAll<HTMLElement>("button:not([disabled])"));
-      if (!focusable.length) return;
-      const first = focusable[0];
-      const last = focusable.at(-1) ?? first;
-      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
-      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
-    }
-    document.addEventListener("keydown", onKeyDown);
-    return () => { document.removeEventListener("keydown", onKeyDown); previousFocus.current?.focus(); };
-  }, [request, onCancel]);
-  if (!request) return null;
-  return <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4" role="presentation">
-    <div ref={dialogRef} role="alertdialog" aria-modal="true" aria-labelledby="history-confirm-title" aria-describedby="history-confirm-description" className="w-full max-w-md border border-line bg-surface p-6 shadow-none">
-      <p id="history-confirm-title" className="text-lg font-semibold text-ink">{request.title}</p>
-      <p id="history-confirm-description" className="mt-3 text-sm leading-6 text-ink-secondary">{request.description}</p>
-      <div className="mt-6 flex flex-wrap justify-end gap-3">
-        <button ref={cancelRef} type="button" className={buttonStyles({ variant: "secondary" })} onClick={onCancel}>ยกเลิก</button>
-        <button type="button" className={buttonStyles({ variant: request.destructive ? "destructive" : "primary" })} onClick={request.onConfirm}>{request.confirmLabel}</button>
-      </div>
-    </div>
-  </div>;
+  return <ModalDialog open={Boolean(request)} onClose={onCancel} title={request?.title ?? "ยืนยันการทำรายการ"} description={request?.description} role="alertdialog" closeOnBackdrop={false}>
+    {request ? <div className="mt-6 flex flex-wrap justify-end gap-3"><button type="button" className={buttonStyles({ variant: "secondary" })} onClick={onCancel}>ยกเลิก</button><button type="button" className={buttonStyles({ variant: request.destructive ? "destructive" : "primary" })} onClick={request.onConfirm}>{request.confirmLabel}</button></div> : null}
+  </ModalDialog>;
 }
 
 export function HistoryPage() {

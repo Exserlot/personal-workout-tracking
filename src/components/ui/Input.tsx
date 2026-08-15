@@ -46,7 +46,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
           <button
             type="button"
             aria-label={clearButtonLabel ?? `ล้างค่า${label}`}
-            className="absolute inset-y-1 right-1 flex h-10 w-10 items-center justify-center rounded-xs text-ink-muted hover:bg-interactive hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+            className="absolute right-0 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-xs text-ink-muted hover:bg-interactive hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
             onClick={onClear}
           >
             <Icon name="close" className="h-4 w-4" />

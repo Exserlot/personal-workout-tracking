@@ -216,6 +216,21 @@ test.describe("Active Workout set logging", () => {
     await expect(page.getByTestId("set-row-session-set-1")).toContainText("เสร็จแล้ว");
   });
 
+  test("announces rest timer lifecycle transitions without announcing every second", async ({ page }) => {
+    await page.getByTestId("primary-set-action").click();
+    const timerRegion = page.getByRole("region", { name: "REST TIMER" });
+    const announcement = timerRegion.getByRole("status");
+    await expect(announcement).toHaveText("เริ่มจับเวลาพักแล้ว");
+    await timerRegion.getByRole("button", { name: "พัก", exact: true }).click();
+    await expect(announcement).toHaveText("หยุดเวลาพักชั่วคราวแล้ว");
+    await timerRegion.getByRole("button", { name: "เริ่มต่อ", exact: true }).click();
+    await expect(announcement).toHaveText("จับเวลาพักต่อแล้ว");
+    await timerRegion.getByRole("button", { name: "เริ่มใหม่", exact: true }).click();
+    await expect(announcement).toHaveText("เริ่มจับเวลาพักใหม่แล้ว");
+    await timerRegion.getByRole("button", { name: "ข้าม", exact: true }).click();
+    await expect(announcement).toHaveText("ข้ามเวลาพักแล้ว");
+  });
+
   test("does not complete a row with missing required values", async ({ page }) => {
     await page.locator('input[id="session-set-1-weight"]').fill("");
     await page.getByTestId("primary-set-action").click();
@@ -345,6 +360,17 @@ test.describe("Active Workout set logging", () => {
     await expect(page.getByTestId("primary-set-action")).toBeVisible();
     await expect(page.getByTestId("save-set-session-set-1")).toBeHidden();
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+    await page.getByRole("button", { name: "เพิ่ม Exercise" }).click();
+    const picker = page.getByRole("dialog", { name: "เพิ่มท่าออกกำลังกาย" });
+    const pickerBox = await picker.boundingBox();
+    expect(pickerBox).toMatchObject({ x: 0, y: 0, width: 320, height: 800 });
+    await page.getByLabel("เปิดตัวกรอง Exercise").click();
+    const mobileFilters = page.getByRole("dialog", { name: "ตัวกรอง Exercise" });
+    await expect(mobileFilters).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(mobileFilters).toBeHidden();
+    await expect(picker).toBeVisible();
+    await page.getByLabel("ปิดตัวเลือกท่า").click();
   });
 
   test("keeps desktop set controls separated and within the workspace", async ({ page }) => {
@@ -421,5 +447,9 @@ test.describe("Active Workout set logging", () => {
     expect(muscleOptionsBox!.x + muscleOptionsBox!.width).toBeLessThanOrEqual(
       pickerBox!.x + pickerBox!.width + 1,
     );
+    await page.keyboard.press("Escape");
+    await expect(muscleOptions).toBeHidden();
+    await expect(filters).toBeVisible();
+    await expect(picker).toBeVisible();
   });
 });

@@ -11,7 +11,7 @@ import { formatHistoryDuration, formatHistoryVolume, historyDraftEquals, history
 import { HistoryRepositoryError } from "../features/history/domain/history";
 import { useExerciseRepository } from "../features/exercises/ExerciseRepositoryContext";
 import { defaultExerciseQuery, type Exercise } from "../features/exercises/domain/exercise";
-import type { SessionExercise, SessionSet, WorkoutSession } from "../features/workout/domain/workout";
+import { kgFromWeight, type SessionExercise, type SessionSet, type WeightUnit, type WorkoutSession } from "../features/workout/domain/workout";
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("th-TH", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
@@ -19,7 +19,11 @@ function formatDate(value: string) {
 
 function dateRange(range: string, customFrom = "", customTo = ""): { from: string | null; to: string | null } {
   if (range === "all") return { from: null, to: null };
-  if (range === "custom") return { from: customFrom ? new Date(`${customFrom}T00:00:00`).toISOString() : null, to: customTo ? new Date(`${customTo}T00:00:00`).toISOString() : null };
+  if (range === "custom") {
+    const to = customTo ? new Date(`${customTo}T00:00:00`) : null;
+    if (to) to.setDate(to.getDate() + 1);
+    return { from: customFrom ? new Date(`${customFrom}T00:00:00`).toISOString() : null, to: to?.toISOString() ?? null };
+  }
   const days = Number(range);
   const to = new Date();
   const from = new Date(to);
@@ -43,6 +47,7 @@ export function HistoryPage() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [fromCache, setFromCache] = useState(false);
+  const [reloadToken, setReloadToken] = useState(0);
   const hasLoaded = useRef(false);
 
   useEffect(() => {
@@ -61,7 +66,7 @@ export function HistoryPage() {
       hasLoaded.current = true;
     }).catch((reason) => { if (!cancelled) setError(reason); }).finally(() => { if (!cancelled) { setLoading(false); setUpdating(false); } });
     return () => { cancelled = true; };
-  }, [range, customFrom, customTo, repository]);
+  }, [range, customFrom, customTo, repository, reloadToken]);
 
   async function loadMore() {
     if (!cursor || loadingMore) return;
@@ -93,7 +98,7 @@ export function HistoryPage() {
           <p aria-live="polite" className="text-sm text-ink-muted">{loading ? "กำลังโหลด…" : updating ? "กำลังอัปเดต…" : `${items.length} Sessions`}</p>
         </div>
         {fromCache ? <p className="mt-4 border-l-2 border-warning bg-surface px-4 py-3 text-sm text-warning">กำลังแสดงข้อมูลที่เก็บไว้ในเครื่อง · กลับมา online เพื่อโหลดล่าสุด</p> : null}
-        {error && !items.length && !loading ? <div className="mt-6 grid gap-4"><ErrorMessage error={error} /><button type="button" className={buttonStyles({ variant: "secondary", className: "w-fit" })} onClick={() => setRange((value) => value)}>ลองใหม่</button></div> : null}
+        {error && !items.length && !loading ? <div className="mt-6 grid gap-4"><ErrorMessage error={error} /><button type="button" className={buttonStyles({ variant: "secondary", className: "w-fit" })} onClick={() => setReloadToken((value) => value + 1)}>ลองใหม่</button></div> : null}
         {loading ? <div className="mt-6 grid gap-4" aria-label="กำลังโหลดประวัติ"><div className="h-20 animate-pulse border-b border-line-subtle bg-surface" /><div className="h-20 animate-pulse border-b border-line-subtle bg-surface" /></div> : null}
         {!loading && !error && !items.length ? <div className="mt-6"><EmptyState title="ยังไม่มีประวัติการฝึก" description="เมื่อ Finish Workout แล้ว Session จะปรากฏที่นี่" showTopRule={false} /></div> : null}
         {items.length ? <div className="mt-6 border-t border-line" role="list">
@@ -115,13 +120,22 @@ export function HistoryPage() {
 function EditableSet({ set, onChange, onDelete, onMove, canDelete, editing, error }: { set: SessionSet; onChange: (next: SessionSet) => void; onDelete: () => void; onMove: (direction: -1 | 1) => void; canDelete: boolean; editing: boolean; error?: string }) {
   const actualWeight = set.actualWeight?.value ?? "";
   const actualReps = set.actualReps ?? "";
+  const unit = set.actualWeight?.unit ?? "KG";
+  function changeStatus(status: SessionSet["status"]) {
+    if (status !== "COMPLETED" && set.status === "COMPLETED" && !window.confirm("เปลี่ยนสถานะและล้างค่าการเล่นจริงของเซ็ตนี้หรือไม่?")) return;
+    onChange(status === "COMPLETED" ? { ...set, status, completedAt: set.completedAt ?? new Date().toISOString() } : { ...set, status, actualWeight: null, actualReps: null, actualEffort: null, actualRestSeconds: null, completedAt: null });
+  }
   return <div className="grid gap-3 border-b border-line-subtle py-4 tablet:grid-cols-[3rem_minmax(6rem,1fr)_6rem_8rem_7rem_auto] tablet:items-end">
     <p className="text-sm text-ink-muted">Set {set.sequence}</p>
-    <label className="grid gap-1 text-xs text-ink-muted">น้ำหนัก<input disabled={!editing} aria-label={`Set ${set.sequence} weight`} type="number" step="0.1" min="0" value={actualWeight} onChange={(event) => { const value = event.target.value; onChange({ ...set, actualWeight: value === "" ? null : { value: Number(value), unit: set.actualWeight?.unit ?? "KG", kg: (set.actualWeight?.unit ?? "KG") === "LB" ? Number(value) * 0.45359237 : Number(value) } }); }} className="min-h-11 border border-line bg-surface px-3 text-ink disabled:opacity-70" /> </label>
+    <div className="grid gap-1 text-xs text-ink-muted"><label htmlFor={`weight-${set.id}`}>น้ำหนัก</label><div className="flex"><input id={`weight-${set.id}`} disabled={!editing} aria-label={`Set ${set.sequence} weight`} type="number" step="0.1" min="0" value={actualWeight} onChange={(event) => { const value = event.target.value; onChange({ ...set, actualWeight: value === "" ? null : { value: Number(value), unit, kg: kgFromWeight(Number(value), unit) } }); }} className="min-h-11 min-w-0 flex-1 border border-line bg-surface px-3 text-ink disabled:opacity-70" /><select disabled={!editing} aria-label={`Set ${set.sequence} weight unit`} value={unit} onChange={(event) => { const nextUnit = event.target.value as WeightUnit; onChange({ ...set, actualWeight: set.actualWeight ? { ...set.actualWeight, unit: nextUnit, kg: kgFromWeight(set.actualWeight.value, nextUnit) } : null }); }} className="min-h-11 border-y border-r border-line bg-surface px-2 text-ink disabled:opacity-70"><option value="KG">KG</option><option value="LB">LB</option></select></div></div>
     <label className="grid gap-1 text-xs text-ink-muted">Reps<input disabled={!editing} aria-label={`Set ${set.sequence} reps`} type="number" min="1" step="1" value={actualReps} onChange={(event) => onChange({ ...set, actualReps: event.target.value === "" ? null : Number(event.target.value) })} className="min-h-11 border border-line bg-surface px-3 text-ink disabled:opacity-70" /> </label>
     <label className="grid gap-1 text-xs text-ink-muted">Effort<select disabled={!editing} aria-label={`Set ${set.sequence} effort metric`} value={set.actualEffort?.metric ?? ""} onChange={(event) => onChange({ ...set, actualEffort: event.target.value ? { metric: event.target.value as "RPE" | "RIR", value: set.actualEffort?.value ?? (event.target.value === "RPE" ? 8 : 2) } : null })} className="min-h-11 border border-line bg-surface px-3 text-ink disabled:opacity-70"><option value="">—</option><option value="RPE">RPE</option><option value="RIR">RIR</option></select></label>
     <label className="grid gap-1 text-xs text-ink-muted">ค่า<input disabled={!editing} aria-label={`Set ${set.sequence} effort value`} type="number" min="0" max="10" step={set.actualEffort?.metric === "RIR" ? "1" : "0.5"} value={set.actualEffort?.value ?? ""} onChange={(event) => onChange({ ...set, actualEffort: set.actualEffort ? { ...set.actualEffort, value: event.target.value === "" ? 0 : Number(event.target.value) } : null })} className="min-h-11 border border-line bg-surface px-3 text-ink disabled:opacity-70" /> </label>
-    <p className="text-sm text-ink-muted">{set.status} · {set.kind}</p>
+    <label className="grid gap-1 text-xs text-ink-muted">สถานะ<select disabled={!editing} aria-label={`Set ${set.sequence} status`} value={set.status} onChange={(event) => changeStatus(event.target.value as SessionSet["status"])} className="min-h-11 border border-line bg-surface px-3 text-ink disabled:opacity-70"><option value="PENDING">Pending</option><option value="COMPLETED">Completed</option><option value="SKIPPED">Skipped</option></select></label>
+    <label className="grid gap-1 text-xs text-ink-muted">ประเภท<select disabled={!editing || set.kind === "DROP" || set.isToFailure} aria-label={`Set ${set.sequence} kind`} value={set.kind} onChange={(event) => onChange({ ...set, kind: event.target.value as SessionSet["kind"] })} className="min-h-11 border border-line bg-surface px-3 text-ink disabled:opacity-70"><option value="WORKING">Working</option><option value="WARM_UP">Warm-up</option>{set.kind === "DROP" ? <option value="DROP">Drop</option> : null}</select></label>
+    <label className="grid gap-1 text-xs text-ink-muted">พัก (วินาที)<input disabled={!editing} aria-label={`Set ${set.sequence} rest seconds`} type="number" min="0" step="1" value={set.actualRestSeconds ?? ""} onChange={(event) => onChange({ ...set, actualRestSeconds: event.target.value === "" ? null : Number(event.target.value) })} className="min-h-11 border border-line bg-surface px-3 text-ink disabled:opacity-70" /></label>
+    {set.isToFailure ? <p className="col-span-full text-xs text-warning">Failure set · แก้ไขได้เฉพาะค่าการเล่นจริง</p> : null}
+    <label className="col-span-full grid gap-1 text-xs text-ink-muted">หมายเหตุ Set<textarea disabled={!editing} aria-label={`Set ${set.sequence} notes`} value={set.notes} onChange={(event) => onChange({ ...set, notes: event.target.value })} className="min-h-16 border border-line bg-surface p-3 text-ink disabled:opacity-70" /></label>
     <div className="flex flex-wrap gap-2 tablet:justify-end"><button type="button" aria-label={`เลื่อน Set ${set.sequence} ขึ้น`} className={buttonStyles({ variant: "quiet", className: "h-11 w-11 p-0" })} onClick={() => onMove(-1)} disabled={!editing || set.sequence === 1}><ArrowUp size={16} /></button><button type="button" aria-label={`เลื่อน Set ${set.sequence} ลง`} className={buttonStyles({ variant: "quiet", className: "h-11 w-11 p-0" })} onClick={() => onMove(1)} disabled={!editing}><ArrowDown size={16} /></button><button type="button" aria-label={`ลบ Set ${set.sequence}`} className={buttonStyles({ variant: "quiet", className: "h-11 w-11 p-0 text-error" })} onClick={onDelete} disabled={!editing || !canDelete}><Trash2 size={16} /></button></div>
     {error ? <p className="col-span-full text-sm text-error" role="alert">{error}</p> : null}
   </div>;
@@ -145,6 +159,7 @@ export function HistoryDetailPage() {
   const { sessionId } = useParams();
   const navigate = useNavigate();
   const [session, setSession] = useState<WorkoutSession | null>(null);
+  const [sessionSource, setSessionSource] = useState<"server" | "cache">("server");
   const [draft, setDraft] = useState<HistorySessionDraft | null>(null);
   const [baseline, setBaseline] = useState<HistorySessionDraft | null>(null);
   const [exerciseOptions, setExerciseOptions] = useState<Exercise[]>([]);
@@ -154,6 +169,8 @@ export function HistoryDetailPage() {
   const [error, setError] = useState<unknown>(null);
   const [success, setSuccess] = useState("");
   const [online, setOnline] = useState(typeof navigator === "undefined" ? true : navigator.onLine);
+  const updateAttempt = useRef<{ operationId: string; fingerprint: string } | null>(null);
+  const deleteAttempt = useRef<{ operationId: string; fingerprint: string } | null>(null);
   const dirty = Boolean(draft && baseline && !historyDraftEquals(draft, baseline));
 
   useEffect(() => { const onlineChange = () => setOnline(navigator.onLine); window.addEventListener("online", onlineChange); window.addEventListener("offline", onlineChange); return () => { window.removeEventListener("online", onlineChange); window.removeEventListener("offline", onlineChange); }; }, []);
@@ -161,18 +178,47 @@ export function HistoryDetailPage() {
     if (!sessionId) return;
     let cancelled = false;
     setLoading(true);
-    repository.getSession(sessionId).then((value) => { if (!cancelled) { setSession(value); if (value) { const next = historyDraftFromSession(value); setDraft(next); setBaseline(next); } } }).catch((reason) => { if (!cancelled) setError(reason); }).finally(() => { if (!cancelled) setLoading(false); });
+    repository.getSession(sessionId).then((result) => { if (!cancelled) { const value = result?.session ?? null; setSessionSource(result?.source ?? "server"); setSession(value); if (value) { const next = historyDraftFromSession(value); setDraft(next); setBaseline(next); updateAttempt.current = null; deleteAttempt.current = null; } } }).catch((reason) => { if (!cancelled) setError(reason); }).finally(() => { if (!cancelled) setLoading(false); });
     exerciseRepository.list({ ...defaultExerciseQuery, status: "active" }).then((items) => { if (!cancelled) setExerciseOptions(items); }).catch(() => undefined);
     return () => { cancelled = true; };
   }, [sessionId, repository, exerciseRepository]);
   useEffect(() => { const beforeUnload = (event: BeforeUnloadEvent) => { if (dirty) { event.preventDefault(); event.returnValue = ""; } }; window.addEventListener("beforeunload", beforeUnload); return () => window.removeEventListener("beforeunload", beforeUnload); }, [dirty]);
+  useEffect(() => {
+    if (!online || sessionSource !== "cache" || dirty || !sessionId) return;
+    let cancelled = false;
+    repository.getSession(sessionId).then((result) => {
+      if (!cancelled && result?.source === "server") {
+        setSessionSource("server"); setSession(result.session); const next = historyDraftFromSession(result.session); setDraft(next); setBaseline(next); setError(null);
+      }
+    }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [online, sessionSource, dirty, sessionId, repository]);
 
   function leave() { if (dirty && !window.confirm("มีการแก้ไขที่ยังไม่ได้บันทึก ต้องการออกหรือไม่?")) return; navigate("/history"); }
   function changeExercise(id: string, next: SessionExercise) { setDraft((value) => value ? { ...value, exercises: value.exercises.map((exercise) => exercise.id === id ? next : exercise) } : value); }
   function moveExercise(id: string, direction: -1 | 1) { setDraft((value) => { if (!value) return value; const index = value.exercises.findIndex((exercise) => exercise.id === id); const target = index + direction; if (target < 0 || target >= value.exercises.length) return value; const exercises = [...value.exercises]; [exercises[index], exercises[target]] = [exercises[target], exercises[index]]; return { ...value, exercises: resequenceExercises(exercises) }; }); }
   function addExercise() { const selected = exerciseOptions[0]; if (!selected) return; const set: SessionSet = { id: crypto.randomUUID(), sourceTemplateSetId: null, sequence: 1, kind: "WORKING", isToFailure: false, targetRepsMin: null, targetRepsMax: null, targetWeight: null, targetEffort: null, targetRestSeconds: 0, actualWeight: null, actualReps: null, actualEffort: null, actualRestSeconds: null, status: "COMPLETED", completedAt: new Date().toISOString(), notes: "" }; const exercise: SessionExercise = { id: crypto.randomUUID(), sourceTemplateExerciseId: null, sourceExerciseId: selected.id, sequence: (draft?.exercises.length ?? 0) + 1, name: selected.name, equipmentCode: selected.equipmentCode, muscles: [], notes: "", sets: [set] }; setDraft((value) => value ? { ...value, exercises: [...value.exercises, exercise] } : value); }
-  async function save() { if (!session || !draft || saving || !online) return; const validation = validateHistoryDraft(draft); if (Object.keys(validation).length) { setError(new HistoryRepositoryError("validation", Object.values(validation)[0])); return; } setSaving(true); setError(null); setSuccess(""); try { const updated = await repository.updateSession({ operationId: crypto.randomUUID(), sessionId: session.id, expectedVersion: session.version, draft }); setSession(updated); const next = historyDraftFromSession(updated); setDraft(next); setBaseline(next); setEditing(false); setSuccess("บันทึกการแก้ไขแล้ว"); } catch (reason) { setError(reason); } finally { setSaving(false); } }
-  async function remove() { if (!session || !online || !window.confirm("ลบ Session นี้ออกจาก History และไม่ใช้คำนวณ Progress ใช่หรือไม่?")) return; setSaving(true); setError(null); try { await repository.softDeleteSession({ operationId: crypto.randomUUID(), sessionId: session.id, expectedVersion: session.version }); navigate("/history", { state: { deleted: true } }); } catch (reason) { setError(reason); } finally { setSaving(false); } }
+  const canMutate = online && sessionSource === "server";
+  async function save() {
+    if (!session || !draft || saving || !canMutate) return;
+    const validation = validateHistoryDraft(draft);
+    if (Object.keys(validation).length) { setError(new HistoryRepositoryError("validation", Object.values(validation)[0])); return; }
+    const fingerprint = JSON.stringify({ sessionId: session.id, version: session.version, draft });
+    if (!updateAttempt.current || updateAttempt.current.fingerprint !== fingerprint) updateAttempt.current = { operationId: crypto.randomUUID(), fingerprint };
+    setSaving(true); setError(null); setSuccess("");
+    try { const updated = await repository.updateSession({ operationId: updateAttempt.current.operationId, sessionId: session.id, expectedVersion: session.version, draft }); setSession(updated); const next = historyDraftFromSession(updated); setDraft(next); setBaseline(next); setEditing(false); updateAttempt.current = null; setSuccess("บันทึกการแก้ไขแล้ว"); }
+    catch (reason) { setError(reason); }
+    finally { setSaving(false); }
+  }
+  async function remove() {
+    if (!session || !canMutate || (!deleteAttempt.current && !window.confirm("ลบ Session นี้ออกจาก History และไม่ใช้คำนวณ Progress ใช่หรือไม่?"))) return;
+    const fingerprint = `${session.id}:${session.version}`;
+    if (!deleteAttempt.current || deleteAttempt.current.fingerprint !== fingerprint) deleteAttempt.current = { operationId: crypto.randomUUID(), fingerprint };
+    setSaving(true); setError(null);
+    try { await repository.softDeleteSession({ operationId: deleteAttempt.current.operationId, sessionId: session.id, expectedVersion: session.version }); deleteAttempt.current = null; navigate("/history", { state: { deleted: true } }); }
+    catch (reason) { setError(reason); }
+    finally { setSaving(false); }
+  }
 
   if (loading) return <PageFrame pageId="P-10" eyebrow="P-10 · HISTORY DETAIL" title="กำลังโหลด History…" description="กำลังอ่าน snapshot จาก server หรือ cache"><span /></PageFrame>;
   if (error && !session) return <PageFrame pageId="P-10" eyebrow="P-10 · HISTORY DETAIL" title="โหลด History ไม่สำเร็จ" description="ลองใหม่อีกครั้งเมื่อเชื่อมต่อได้"><ErrorMessage error={error} /><button type="button" className={buttonStyles({ variant: "secondary", className: "mt-6" })} onClick={() => window.location.reload()}>ลองใหม่</button></PageFrame>;
@@ -180,17 +226,17 @@ export function HistoryDetailPage() {
   const summary = historySummaryFromSession(session);
   const validation = validateHistoryDraft(draft);
   return <PageFrame pageId="P-10" eyebrow="P-10 · HISTORY DETAIL" title={summary.label} description={`${formatDate(session.completedAt ?? session.startedAt)} · ${session.editedAt ? "แก้ไขย้อนหลังแล้ว" : "snapshot จากการฝึกจริง"}`} action={<button type="button" className={buttonStyles({ variant: "quiet" })} onClick={leave}>กลับไป History</button>}>
-    {!online ? <p className="mb-6 border-l-2 border-warning bg-surface px-4 py-3 text-sm text-warning">Offline: ดูรายละเอียดได้ แต่การแก้ไขและลบต้องกลับมา online</p> : null}
+    {!canMutate ? <p className="mb-6 border-l-2 border-warning bg-surface px-4 py-3 text-sm text-warning">{sessionSource === "cache" ? "กำลังดูข้อมูลจาก cache แบบอ่านอย่างเดียว กด Retry server เมื่อเชื่อมต่อได้" : "Offline: ดูรายละเอียดได้ แต่การแก้ไขและลบต้องกลับมา online"}</p> : null}
     {success ? <p role="status" className="mb-6 border-l-2 border-success bg-surface px-4 py-3 text-sm text-success">{success}</p> : null}
     {error ? <div className="mb-6"><ErrorMessage error={error} /></div> : null}
     <div className="page-grid">
       <div className="col-span-4 grid grid-cols-2 gap-4 tablet:col-span-8 tablet:grid-cols-4 desktop:col-span-8"><StatBlock label="Duration" value={formatHistoryDuration(summary.durationSeconds)} accent /><StatBlock label="Exercises" value={String(summary.exerciseCount)} /><StatBlock label="Working sets" value={String(summary.completedWorkingSetCount)} /><StatBlock label="Volume" value={formatHistoryVolume(summary.volumeKg)} /></div>
       <section className="col-span-4 mt-8 border-t border-line pt-6 tablet:col-span-8 desktop:col-span-8"><SectionHeader eyebrow="SESSION SNAPSHOT" title={editing ? "แก้ไขข้อมูลย้อนหลัง" : "รายละเอียด Session"} description="ค่าที่แสดงมาจาก snapshot ของวันที่ฝึก และไม่เปลี่ยนตาม Template ปัจจุบัน" />
         <label className="mt-5 grid gap-2 text-sm text-ink-secondary">หมายเหตุ Session<textarea value={draft.notes} disabled={!editing} onChange={(event) => setDraft({ ...draft, notes: event.target.value })} className="min-h-24 border border-line bg-surface p-3 text-ink disabled:opacity-70" /></label>
-        <div className="mt-6 border-t border-line">{draft.exercises.map((exercise) => <ExerciseEditor key={exercise.id} exercise={exercise} editing={editing} exerciseOptions={exerciseOptions} onChange={(next) => changeExercise(exercise.id, next)} onDelete={() => setDraft({ ...draft, exercises: resequenceExercises(draft.exercises.filter((item) => item.id !== exercise.id)) })} onMove={(direction) => moveExercise(exercise.id, direction)} canDelete={draft.exercises.length > 1} error={Object.entries(validation).find(([key]) => key.startsWith(`exercise-${exercise.sequence - 1}`))?.[1]} />)}</div>
+        <div className="mt-6 border-t border-line">{draft.exercises.map((exercise) => <ExerciseEditor key={exercise.id} exercise={exercise} editing={editing} exerciseOptions={exerciseOptions} onChange={(next) => changeExercise(exercise.id, next)} onDelete={() => setDraft({ ...draft, exercises: resequenceExercises(draft.exercises.filter((item) => item.id !== exercise.id)) })} onMove={(direction) => moveExercise(exercise.id, direction)} canDelete={true} error={Object.entries(validation).find(([key]) => key.startsWith(`exercise-${exercise.sequence - 1}`))?.[1]} />)}</div>
         {editing ? <button type="button" className={buttonStyles({ variant: "secondary", className: "mt-5" })} onClick={addExercise} disabled={!exerciseOptions.length}><Plus size={16} /> เพิ่มท่า</button> : null}
       </section>
-      <aside className="col-span-4 mt-8 border-t border-line pt-6 tablet:col-span-8 desktop:col-span-4 desktop:mt-0"><SectionHeader eyebrow="ACTIONS" title="จัดการ Session" description={editing ? "ตรวจสอบค่าแล้วบันทึกเมื่อพร้อม" : "แก้ไขย้อนหลังได้เมื่อเชื่อมต่อ server"} />{!editing ? <div className="mt-5 grid gap-3"><button type="button" className={buttonStyles({ variant: "primary" })} onClick={() => setEditing(true)} disabled={!online}>แก้ไข History</button><button type="button" className={buttonStyles({ variant: "quiet", className: "text-error" })} onClick={remove} disabled={!online || saving}>ลบ Session</button></div> : <div className="mt-5 grid gap-3"><button type="button" className={buttonStyles({ variant: "primary" })} onClick={save} disabled={!online || saving}>{saving ? "กำลังบันทึก…" : "บันทึกการแก้ไข"}</button><button type="button" className={buttonStyles({ variant: "quiet" })} onClick={() => { if (dirty && !window.confirm("ทิ้งการแก้ไขหรือไม่?")) return; const next = historyDraftFromSession(session); setDraft(next); setBaseline(next); setEditing(false); }}>ยกเลิก</button></div>}</aside>
+      <aside className="col-span-4 mt-8 border-t border-line pt-6 tablet:col-span-8 desktop:col-span-4 desktop:mt-0"><SectionHeader eyebrow="ACTIONS" title="จัดการ Session" description={editing ? "ตรวจสอบค่าแล้วบันทึกเมื่อพร้อม" : "แก้ไขย้อนหลังได้เมื่อเชื่อมต่อ server"} />{!editing ? <div className="mt-5 grid gap-3"><button type="button" className={buttonStyles({ variant: "primary" })} onClick={() => setEditing(true)} disabled={!canMutate}>แก้ไข History</button><button type="button" className={buttonStyles({ variant: "quiet", className: "text-error" })} onClick={remove} disabled={!canMutate || saving}>ลบ Session</button>{sessionSource === "cache" ? <button type="button" className={buttonStyles({ variant: "secondary" })} onClick={() => window.location.reload()}>Retry server</button> : null}</div> : <div className="mt-5 grid gap-3"><button type="button" className={buttonStyles({ variant: "primary" })} onClick={save} disabled={!canMutate || saving}>{saving ? "กำลังบันทึก…" : "บันทึกการแก้ไข"}</button><button type="button" className={buttonStyles({ variant: "quiet" })} onClick={() => { if (dirty && !window.confirm("ทิ้งการแก้ไขหรือไม่?")) return; const next = historyDraftFromSession(session); setDraft(next); setBaseline(next); updateAttempt.current = null; setEditing(false); }}>ยกเลิก</button></div>}</aside>
     </div>
   </PageFrame>;
 }

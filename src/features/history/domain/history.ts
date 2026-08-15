@@ -30,6 +30,11 @@ export interface HistoryPageResult {
   fromCache?: boolean;
 }
 
+export interface HistorySessionResult {
+  session: WorkoutSession;
+  source: "server" | "cache";
+}
+
 export interface HistorySessionDraft {
   notes: string;
   exercises: SessionExercise[];
@@ -66,7 +71,7 @@ export class HistoryRepositoryError extends Error {
 
 export interface HistoryRepository {
   listSessions(query: HistoryQuery): Promise<HistoryPageResult>;
-  getSession(sessionId: string): Promise<WorkoutSession | null>;
+  getSession(sessionId: string): Promise<HistorySessionResult | null>;
   updateSession(input: HistoryUpdateInput): Promise<WorkoutSession>;
   softDeleteSession(input: HistoryDeleteInput): Promise<void>;
 }
@@ -125,7 +130,7 @@ export function validateHistoryDraft(draft: HistorySessionDraft): Record<string,
           const validRir = metric === "RIR" && Number.isInteger(value) && value >= 0 && value <= 10;
           if (!validRpe && !validRir) errors[`${key}-effort`] = "ค่า RPE ต้องอยู่ระหว่าง 1–10 ทีละครึ่ง หรือ RIR เป็นจำนวนเต็ม 0–10";
         }
-      } else if (set.actualWeight || set.actualReps || set.actualEffort || set.completedAt) {
+      } else if (set.actualWeight || set.actualReps || set.actualEffort || set.actualRestSeconds !== null || set.completedAt) {
         errors[key] = "Pending/Skipped set ห้ามมีค่าการเล่นจริง";
       }
       if (set.kind === "WARM_UP" && set.isToFailure) errors[key] = "Warm-up set ไม่สามารถเป็น failure set";

@@ -5,24 +5,14 @@ import type { WorkoutSession } from "../../workout/domain/workout";
 import { HistoryRepositoryError, historySummaryFromSession, type HistoryDeleteInput, type HistoryPageResult, type HistoryQuery, type HistoryRepository, type HistoryUpdateInput } from "../domain/history";
 import { historyListItemFromRow } from "./HistoryRepository";
 import { cacheHistoryDetail, cacheHistoryPage, loadCachedHistory, loadCachedHistoryDetail, removeCachedHistory } from "./historyCache";
+import { loadAuthSession } from "../../auth/authSession";
 
 type RecordValue = Record<string, unknown>;
 
 function authUserId(): string {
-  if (typeof localStorage === "undefined") return "anonymous";
-  for (let index = 0; index < localStorage.length; index += 1) {
-    const key = localStorage.key(index);
-    if (!key?.endsWith("-auth-token")) continue;
-    try {
-      const value = JSON.parse(localStorage.getItem(key) ?? "null") as { user?: { id?: unknown }; access_token?: string } | null;
-      if (typeof value?.user?.id === "string") return value.user.id;
-      if (typeof value?.access_token === "string") {
-        const payload = JSON.parse(atob(value.access_token.split(".")[1])) as { sub?: unknown };
-        if (typeof payload.sub === "string") return payload.sub;
-      }
-    } catch { /* ignore unrelated auth values */ }
-  }
-  return "anonymous";
+  const session = typeof localStorage === "undefined" ? null : loadAuthSession();
+  if (!session?.user.id) throw new HistoryRepositoryError("authorization", "กรุณาเข้าสู่ระบบเพื่อดูประวัติ");
+  return session.user.id;
 }
 
 function rows(value: unknown): RecordValue[] {
@@ -60,32 +50,20 @@ function mapError(error: unknown, fallback: string): HistoryRepositoryError {
 function setPayload(set: WorkoutSession["exercises"][number]["sets"][number]) {
   return {
     id: set.id,
-    source_template_set_id: set.sourceTemplateSetId,
     sequence_no: set.sequence,
     set_kind_code: set.kind,
-    is_to_failure: set.isToFailure,
-    target_reps_min: set.targetRepsMin,
-    target_reps_max: set.targetRepsMax,
-    target_weight_value: set.targetWeight?.value ?? null,
-    target_weight_unit: set.targetWeight?.unit ?? null,
-    target_weight_kg: set.targetWeight?.kg ?? null,
-    target_effort_metric: set.targetEffort?.metric ?? null,
-    target_effort_value: set.targetEffort?.value ?? null,
-    target_rest_seconds: set.targetRestSeconds,
     actual_weight_value: set.actualWeight?.value ?? null,
     actual_weight_unit: set.actualWeight?.unit ?? null,
-    actual_weight_kg: set.actualWeight?.kg ?? null,
     actual_reps: set.actualReps,
     actual_effort_metric: set.actualEffort?.metric ?? null,
     actual_effort_value: set.actualEffort?.value ?? null,
     actual_rest_seconds: set.actualRestSeconds,
     status: set.status,
-    completed_at: set.completedAt,
     notes: set.notes,
   };
 }
 
-function draftPayload(input: HistoryUpdateInput) {
+export function historyEditablePayload(input: HistoryUpdateInput) {
   return {
     notes: input.draft.notes,
     exercises: input.draft.exercises.map((exercise) => ({
@@ -141,15 +119,15 @@ export class SupabaseHistoryRepository implements HistoryRepository {
     }
   }
 
-  async getSession(sessionId: string): Promise<WorkoutSession | null> {
+  async getSession(sessionId: string) {
     try {
       const session = await this.getRemoteSession(sessionId);
       if (session) { try { await cacheHistoryDetail(authUserId(), session); } catch { /* caching is optional */ } }
-      return session;
+      return session ? { session, source: "server" as const } : null;
     } catch (error) {
       try {
         const cached = await loadCachedHistoryDetail(authUserId(), sessionId);
-        if (cached) return cached;
+        if (cached) return { session: cached, source: "cache" as const };
       } catch { /* cache is optional */ }
       throw mapError(error, "โหลดรายละเอียด History ไม่สำเร็จ");
     }
@@ -157,10 +135,10 @@ export class SupabaseHistoryRepository implements HistoryRepository {
 
   async updateSession(input: HistoryUpdateInput): Promise<WorkoutSession> {
     try {
-      const result = await this.client.request<unknown>({ method: "POST", path: "rpc/history_update_session", body: { p_operation_id: input.operationId, p_session_id: input.sessionId, p_expected_version: input.expectedVersion, p_draft: draftPayload(input) } });
+      const result = await this.client.request<unknown>({ method: "POST", path: "rpc/history_update_session", body: { p_operation_id: input.operationId, p_session_id: input.sessionId, p_expected_version: input.expectedVersion, p_draft: historyEditablePayload(input) } });
       const resultVersion = rpcVersion(result);
       const session = await this.getRemoteSession(input.sessionId);
-      if (!session || session.version < resultVersion) throw new HistoryRepositoryError("server", "บันทึกแล้วแต่โหลด History ที่ยืนยันไม่ได้");
+      if (!session || session.version !== resultVersion) throw new HistoryRepositoryError("server", "บันทึกแล้วแต่โหลด History ที่ยืนยันไม่ได้");
       try { await cacheHistoryDetail(authUserId(), session); await cacheHistoryPage(authUserId(), [historySummaryFromSession(session)]); } catch { /* caching is optional */ }
       return session;
     } catch (error) {
@@ -170,7 +148,8 @@ export class SupabaseHistoryRepository implements HistoryRepository {
 
   async softDeleteSession(input: HistoryDeleteInput): Promise<void> {
     try {
-      await this.client.request<unknown>({ method: "POST", path: "rpc/history_soft_delete_session", body: { p_operation_id: input.operationId, p_session_id: input.sessionId, p_expected_version: input.expectedVersion } });
+      const result = await this.client.request<unknown>({ method: "POST", path: "rpc/history_soft_delete_session", body: { p_operation_id: input.operationId, p_session_id: input.sessionId, p_expected_version: input.expectedVersion } });
+      rpcVersion(result);
       await removeCachedHistory(authUserId(), input.sessionId);
     } catch (error) {
       throw mapError(error, "ลบ History ไม่สำเร็จ");

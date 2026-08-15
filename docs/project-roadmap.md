@@ -1,10 +1,10 @@
 # Personal Workout Tracking Web App — Project Roadmap Tracker
 
-**สถานะล่าสุด:** 13 สิงหาคม 2026
+**สถานะล่าสุด:** 15 สิงหาคม 2026
 
 **Baseline:** commit `847960f`
 
-**Current focus:** M-05B — Basic Progress
+**Current focus:** M-05A.1 — History Snapshot and Retry Hardening
 
 **MVP target:** M-01 ถึง M-07 ผ่าน Definition of Done
 
@@ -54,7 +54,7 @@ MVP ครอบคลุม Exercise Library, Workout Templates, Routine, Today
 | M-02 Exercise Library & Planning | `DONE` | Exercise → Template → Routine → Activate ทำงานจริง | M-01 |
 | M-03 Today & Online Workout Execution | `DONE` | Start/Resume → Log → Finish/Discard ทำงานแบบ online-first | M-02 |
 | M-04 Offline Reliability & Ownership | `DONE` | Offline Set mutations, idempotent Session lifecycle, conflict recovery, remote abandon และ P-13 sync visibility | M-03 |
-| M-05A Workout History | `DONE` | Completed Session list/detail/edit/delete | M-03, M-04 contracts |
+| M-05A Workout History | `PARTIAL` | Completed Session list/detail/edit/delete plus snapshot hardening | M-03, M-04 contracts |
 | M-05B Basic Progress | `PENDING` | Volume, e1RM, PR และ Exercise trends | M-05A |
 | M-06 Responsive & Accessibility QA | `PARTIAL` | Cross-device and accessibility release quality | M-02–M-05 |
 | M-07 Release Hardening | `PENDING` | Production deploy, security, backup และ observability | M-01–M-06 |
@@ -236,7 +236,7 @@ MVP ครอบคลุม Exercise Library, Workout Templates, Routine, Today
 
 ## 9. M-05A — Workout History
 
-**Status:** `DONE` — P-09/P-10 เชื่อม Supabase และรองรับดู/แก้ไข/ลบ Completed Session แบบ online
+**Status:** `PARTIAL` — P-09/P-10 เชื่อม Supabase และกำลังปิด hardening ก่อนเริ่ม Progress
 
 - [x] เพิ่ม History domain/repository แยกจาก Workout Execution commands
 - [x] List Completed Sessions ใหม่ไปเก่า พร้อม pagination/filter ตามช่วงเวลา
@@ -248,6 +248,18 @@ MVP ครอบคลุม Exercise Library, Workout Templates, Routine, Today
 - [x] Loading, empty, updating, error, conflict และ success states
 - [x] Responsive desktop table/mobile labeled list
 - [x] Repository, database และ E2E tests
+
+### M-05A.1 — History Snapshot and Retry Hardening
+
+**Status:** `PARTIAL` — migration/database regression ผ่านแล้ว; เหลือ targeted Playwright hardening ก่อนปิด milestone
+
+- [x] Snapshot-safe history update ที่แยก existing, replaced และ new rows
+- [x] Editable-only mutation payload และ canonical KG/LB conversion ฝั่ง server
+- [x] Stable operation ID สำหรับ update/delete retry และ result-version validation
+- [x] Cached detail ระบุ server/cache source และ cache version 2 พร้อม user isolation
+- [x] History editor รองรับ unit, status, kind, rest และ Set notes
+- [x] Supabase reset/lint/database tests ผ่านบน local Docker (122 tests)
+- [ ] Playwright hardening และ roadmap ปิด M-05A หลัง verification ครบ
 
 **Exit criteria:** Completed Session ทุกค่าตรวจย้อนกลับได้; edit/delete ไม่กระทบ Template และ soft-deleted Session หายจาก History ปกติ
 
@@ -315,7 +327,7 @@ MVP ครอบคลุม Exercise Library, Workout Templates, Routine, Today
 | FR-AW-01–07 | UF-05–07 | P-07, P-08 | M-03 | `DONE` online |
 | FR-AW-08–09 | UF-06, UF-08, UF-09 | P-07, P-13 | M-04 | `DONE` |
 | FR-AW-10–11 | UF-07 | P-02, P-07, P-08 | M-03, M-04 | `DONE` |
-| FR-HI-01–05 | UF-10 | P-09, P-10 | M-05A | `DONE` |
+| FR-HI-01–05 | UF-10 | P-09, P-10 | M-05A | `PARTIAL` |
 | FR-PR-01–05 | UF-11 | P-11, P-12 | M-05B | `PENDING` |
 | FR-ST-01–03 | UF-06, UF-08, UF-09 | P-07, P-13 | M-03–M-05 | `PARTIAL` |
 | NFR-01–02, 09 | ทุก core flow | P-01–P-13 | M-01, M-06 | `PARTIAL` |

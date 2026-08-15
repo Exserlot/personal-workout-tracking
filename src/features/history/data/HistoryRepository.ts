@@ -1,4 +1,4 @@
-import type { HistoryDeleteInput, HistoryListItem, HistoryPageResult, HistoryQuery, HistoryRepository, HistoryUpdateInput } from "../domain/history";
+import type { HistoryDeleteInput, HistoryListItem, HistoryPageResult, HistoryQuery, HistoryRepository, HistorySessionResult, HistoryUpdateInput } from "../domain/history";
 import { HistoryRepositoryError } from "../domain/history";
 import type { WorkoutSession } from "../../workout/domain/workout";
 
@@ -6,7 +6,7 @@ export type { HistoryRepository };
 
 export interface HistoryRepositoryClient extends HistoryRepository {
   listSessions(query: HistoryQuery): Promise<HistoryPageResult>;
-  getSession(sessionId: string): Promise<WorkoutSession | null>;
+  getSession(sessionId: string): Promise<HistorySessionResult | null>;
   updateSession(input: HistoryUpdateInput): Promise<WorkoutSession>;
   softDeleteSession(input: HistoryDeleteInput): Promise<void>;
 }

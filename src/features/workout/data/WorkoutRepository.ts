@@ -94,6 +94,9 @@ function weight(value: unknown, unit: unknown, kg: unknown, field: string): Work
   const parsedKg = decimal(kg, `${field}.kg`, true);
   if (parsedValue === null && parsedUnit === null && parsedKg === null) return null;
   if (parsedValue === null || parsedKg === null || (parsedUnit !== "KG" && parsedUnit !== "LB")) throw new WorkoutRepositoryError("unknown", `Workout response has invalid ${field}`);
+  if (parsedValue < 0 || parsedKg < 0) throw new WorkoutRepositoryError("unknown", `Workout response has invalid ${field}`);
+  const expectedKg = Math.round((parsedUnit === "LB" ? parsedValue * 0.45359237 : parsedValue) * 10000) / 10000;
+  if (parsedKg !== expectedKg) throw new WorkoutRepositoryError("unknown", `Workout response has invalid ${field} canonical value`);
   return { value: parsedValue, unit: parsedUnit as WeightUnit, kg: parsedKg };
 }
 

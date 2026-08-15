@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { SupabaseRequestError, type SupabaseDataClient } from "../../../lib/supabase/SupabaseRestClient";
-import { SupabaseHistoryRepository } from "./SupabaseHistoryRepository";
+import { SupabaseHistoryRepository, historyEditablePayload } from "./SupabaseHistoryRepository";
 
 class FakeClient implements SupabaseDataClient {
   requests: Array<{ path: string; body?: unknown }> = [];
@@ -32,5 +32,20 @@ describe("SupabaseHistoryRepository", () => {
     await expect(repository.updateSession({ operationId: "operation-1", sessionId: "session-1", expectedVersion: 2, draft: { notes: "", exercises: [] } })).rejects.toMatchObject({ code: "conflict" });
     expect(client.requests[0].path).toBe("rpc/history_update_session");
     expect(client.requests[0].body).toMatchObject({ p_operation_id: "operation-1", p_session_id: "session-1", p_expected_version: 2 });
+  });
+
+  it("serializes only editable history fields", () => {
+    const payload = historyEditablePayload({
+      operationId: "operation-1", sessionId: "session-1", expectedVersion: 2,
+      draft: { notes: "note", exercises: [{
+        id: "exercise-1", sourceTemplateExerciseId: "template-exercise", sourceExerciseId: "exercise-source", sequence: 1, name: "Old snapshot", equipmentCode: "barbell", muscles: [], notes: "cue", sets: [{
+          id: "set-1", sourceTemplateSetId: "template-set", sequence: 1, kind: "WORKING", isToFailure: true, targetRepsMin: 8, targetRepsMax: 10, targetWeight: { value: 100, unit: "KG", kg: 100 }, targetEffort: { metric: "RPE", value: 8 }, targetRestSeconds: 90, actualWeight: { value: 70, unit: "KG", kg: 70 }, actualReps: 8, actualEffort: null, actualRestSeconds: 60, status: "COMPLETED", completedAt: "2026-08-10T10:00:00Z", notes: "set note",
+        }],
+      }] },
+    });
+    const serialized = payload.exercises[0].sets[0] as Record<string, unknown>;
+    expect(serialized).not.toHaveProperty("target_weight_kg");
+    expect(serialized).not.toHaveProperty("completed_at");
+    expect(serialized).toMatchObject({ actual_weight_value: 70, actual_weight_unit: "KG", status: "COMPLETED" });
   });
 });

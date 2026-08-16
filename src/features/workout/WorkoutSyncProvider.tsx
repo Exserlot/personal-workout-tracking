@@ -6,6 +6,7 @@ import { listSessionCaches, loadSessionCache, WorkoutCacheError } from "./data/a
 import { archiveAfterRemoteAbandon, archiveAndUseServer, archiveCorruptCacheRecord, archiveCorruptRecords, listRecoveryBundles, listRecoveryRawRecords, listSyncOperations, subscribeSyncChanges, WorkoutQueueError } from "./data/workoutSyncStore";
 import { WorkoutSyncContext, type WorkoutSessionSyncSummary, type WorkoutSyncController, type WorkoutSyncOverview } from "./WorkoutSyncContext";
 import { WorkoutRepositoryError, type WorkoutConflictDetail } from "./domain/workout";
+import { telemetry } from "../../lib/telemetry/telemetry";
 
 export function WorkoutSyncProvider({ children }: { children: ReactNode }) {
   const repository = useWorkoutRepository();
@@ -14,6 +15,7 @@ export function WorkoutSyncProvider({ children }: { children: ReactNode }) {
   const coordinator = useMemo(() => new WorkoutSyncCoordinator(repository, userId), [repository, userId]);
   const overviewRef = useRef<WorkoutSyncOverview>({ status: "synced", pendingCount: 0, conflictCount: 0, lastSyncedAt: null, sessions: [], recoveryCount: 0 });
   const overviewListeners = useRef(new Set<() => void>());
+  const lastTelemetryState = useRef("");
 
   const refreshOverview = useCallback(async () => {
     if (!userId) {
@@ -51,6 +53,17 @@ export function WorkoutSyncProvider({ children }: { children: ReactNode }) {
         overviewRef.current = { ...overviewRef.current, status: "recovery-required", recoveryCount: rawRecoveries.length };
       }
     } finally {
+      const overview = overviewRef.current;
+      const telemetryState = `${overview.status}:${overview.pendingCount}:${overview.conflictCount}:${overview.recoveryCount}`;
+      if (userId && telemetryState !== lastTelemetryState.current) {
+        lastTelemetryState.current = telemetryState;
+        telemetry.captureEvent("workout_sync_state_changed", {
+          status: overview.status,
+          pendingCount: overview.pendingCount,
+          conflictCount: overview.conflictCount,
+          recoveryCount: overview.recoveryCount,
+        });
+      }
       overviewListeners.current.forEach((listener) => listener());
     }
   }, [coordinator, userId]);

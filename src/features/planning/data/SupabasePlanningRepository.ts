@@ -27,6 +27,7 @@ import {
   SupabaseRestClient,
   type SupabaseDataClient,
 } from "../../../lib/supabase/SupabaseRestClient";
+import { runtimeConfigState } from "../../../config/runtimeConfig";
 
 type RecordValue = Record<string, unknown>;
 
@@ -426,8 +427,7 @@ class UnconfiguredPlanningRepository implements PlanningRepository {
 }
 
 export function createSupabasePlanningRepository(): PlanningRepository {
-  const url = import.meta.env.VITE_SUPABASE_URL;
-  const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ?? import.meta.env.VITE_SUPABASE_ANON_KEY;
-  if (!url || !anonKey) return new UnconfiguredPlanningRepository();
-  return new SupabasePlanningRepository(new SupabaseRestClient({ url, anonKey }));
+  const config = runtimeConfigState.config;
+  if (!config) return new UnconfiguredPlanningRepository();
+  return new SupabasePlanningRepository(new SupabaseRestClient({ url: config.supabaseUrl, anonKey: config.supabasePublishableKey }));
 }

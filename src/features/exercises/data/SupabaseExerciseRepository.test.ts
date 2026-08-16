@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   SupabaseExerciseRepository,
+  readSupabaseAccessToken,
   SupabaseRestClient,
   type SupabaseDataClient,
   type SupabaseRequest,
@@ -77,6 +78,29 @@ describe("SupabaseExerciseRepository", () => {
 });
 
 describe("SupabaseRestClient", () => {
+  it("reads only the canonical FORM auth storage key", () => {
+    const values = new Map<string, string>([
+      ["unrelated-auth-token", JSON.stringify({ access_token: "wrong-token" })],
+      ["fitness-auth-token", JSON.stringify({
+        access_token: "form-token",
+        refresh_token: "refresh-token",
+        expires_at: 4_600,
+        user: { id: "owner-id", email: "owner@example.test" },
+      })],
+    ]);
+    const storage: Storage = {
+      get length() { return values.size; },
+      clear: () => values.clear(),
+      getItem: (key) => values.get(key) ?? null,
+      key: (index) => [...values.keys()][index] ?? null,
+      removeItem: (key) => { values.delete(key); },
+      setItem: (key, value) => { values.set(key, value); },
+    };
+    expect(readSupabaseAccessToken(storage)).toBe("form-token");
+    storage.removeItem("fitness-auth-token");
+    expect(readSupabaseAccessToken(storage)).toBeNull();
+  });
+
   it("sends an opaque publishable key only as apikey when there is no user session", async () => {
     let requestInit: RequestInit | undefined;
     const fetchImpl = (async (_input: RequestInfo | URL, init?: RequestInit) => {

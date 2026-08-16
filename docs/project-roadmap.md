@@ -1,10 +1,10 @@
 # Personal Workout Tracking Web App — Project Roadmap Tracker
 
-**สถานะล่าสุด:** 15 สิงหาคม 2026
+**สถานะล่าสุด:** 16 สิงหาคม 2026
 
 **Baseline:** commit `169036f`
 
-**Current focus:** M-06 — Responsive and Accessibility QA (verification)
+**Current focus:** M-07A — Staging provisioning and smoke validation
 
 **MVP target:** M-01 ถึง M-07 ผ่าน Definition of Done
 
@@ -50,20 +50,20 @@ MVP ครอบคลุม Exercise Library, Workout Templates, Routine, Today
 | Milestone | สถานะ | ผลลัพธ์หลัก | Dependency |
 | --- | --- | --- | --- |
 | M-00 Product & Design Definition | `DONE` | Requirements, flows, IA, design, domain และ data rules | — |
-| M-01 Foundation & Private Auth | `PARTIAL` | App shell, Supabase local, auth และ design foundation ใช้งานได้ | M-00 |
+| M-01 Foundation & Private Auth | `DONE` | App shell, Supabase local, auth และ design foundation ใช้งานได้ | M-00 |
 | M-02 Exercise Library & Planning | `DONE` | Exercise → Template → Routine → Activate ทำงานจริง | M-01 |
 | M-03 Today & Online Workout Execution | `DONE` | Start/Resume → Log → Finish/Discard ทำงานแบบ online-first | M-02 |
 | M-04 Offline Reliability & Ownership | `DONE` | Offline Set mutations, idempotent Session lifecycle, conflict recovery, remote abandon และ P-13 sync visibility | M-03 |
 | M-05A Workout History | `DONE` | Completed Session list/detail/edit/delete plus snapshot hardening | M-03, M-04 contracts |
 | M-05B Basic Progress | `DONE` | Live volume, e1RM, 3 PR types และ Exercise trends | M-05A |
-| M-06 Responsive & Accessibility QA | `PARTIAL` | Cross-device and accessibility release quality | M-02–M-05 |
-| M-07 Release Hardening | `PENDING` | Production deploy, security, backup และ observability | M-01–M-06 |
+| M-06 Responsive & Accessibility QA | `PARTIAL` | Automated responsive/Axe/cross-browser gates ผ่าน; รอ physical-device และ assistive-technology sign-off | M-02–M-05 |
+| M-07 Release Hardening | `PARTIAL` | M-07A local production foundation พร้อม; รอ staging validation และ M-07B launch operations | M-01–M-06 |
 
 ### งานสามลำดับถัดไป
 
-1. ปิด responsive/accessibility QA ทุกหน้าใน M-06
-2. เพิ่ม PWA installability, production environment และ observability ใน M-07
-3. เตรียม production deploy, backup/restore rehearsal และ rollback ให้พร้อมใช้งานจริง
+1. Provision Vercel, Staging Supabase และ Sentry secrets แล้วรัน staging workflow/smoke
+2. ลงผล physical-phone, 200% zoom, High Contrast และ NVDA/VoiceOver เพื่อปิด M-06
+3. ทำ M-07B production launch, backup/restore rehearsal และ rollback drill
 
 ## 4. M-00 — Product and Design Definition
 
@@ -285,19 +285,19 @@ MVP ครอบคลุม Exercise Library, Workout Templates, Routine, Today
 
 ## 11. M-06 — Responsive and Accessibility QA
 
-**Status:** `PARTIAL` — shared accessibility foundation และ automated Chromium/Axe/WebKit gates ผ่าน; Firefox runner และ manual device checks ยังรอปิด
+**Status:** `PARTIAL` — automated Chromium/Axe/Firefox/WebKit gates ผ่านครบ; manual physical-device, zoom/High Contrast และ screen-reader sign-off ยังรอปิด
 
 - [x] Swiss dark tokens, grid, typography และ minimal-shadow primitives
 - [x] Today, Exercise, Planning และ Active Workout responsive composition
 - [x] Visible focus, 44px controls และหลักการ dialog focus trap ใน core flows
-- [ ] Audit ทุก P-01–P-13 ที่ 320, 360, 600, 768, 1024, 1280 และ 1600px
+- [x] Audit ทุก P-01–P-13 ที่ 320, 360, 600, 768, 1024, 1280 และ 1600px แบบ automated
 - [ ] ตรวจ keyboard-only, screen reader names และ focus order
-- [ ] ตรวจ WCAG 2.2 AA contrast และ non-color status cues
-- [ ] ตรวจ reduced motion และ timer feedback
+- [x] ตรวจ Axe WCAG A/AA baseline และ non-color status cues แบบ automated
+- [x] ตรวจ reduced motion, forced-colors styles และ timer announcements แบบ automated
 - [ ] ตรวจ mobile keyboard/safe-area กับทุก sticky action
 - [x] เพิ่ม chart alternative และ accessible data table
 - [ ] ตรวจภาษาไทย/อังกฤษ, terminology และข้อความ implementation ที่หลุดสู่ UI
-- [ ] Cross-browser smoke: Chromium, Firefox และ WebKit
+- [x] Cross-browser smoke: Chromium, Firefox และ WebKit
 
 **QA evidence:** [M-06 QA Report](m06-qa-report.md) — automated baseline ผ่านตามรายการ แต่ยังไม่อ้างว่าเป็น physical-device หรือ screen-reader sign-off
 
@@ -305,16 +305,32 @@ MVP ครอบคลุม Exercise Library, Workout Templates, Routine, Today
 
 ## 12. M-07 — Release Hardening
 
-**Status:** `PENDING`
+**Status:** `PARTIAL`
 
-- [ ] เลือก production hosting และ Supabase project
+### M-07A — Production Foundation
+
+- [x] Installable PWA, prompt-based update และ offline shell โดยไม่ cache Supabase/Auth/Sentry requests
+- [x] Typed runtime config พร้อม browser-secret rejection และ central auth/config access
+- [x] Privacy-safe Sentry adapter, sanitization และ root Error Boundary
+- [x] Vercel SPA rewrite และ security headers
+- [x] Route-level lazy loading และ automated bundle/precache budgets
+- [x] GitHub Actions สำหรับ quality, staging และ approval-gated production workflow
+- [x] Environment, monitoring/privacy และ release runbooks
+- [ ] Provision remote Vercel, Staging Supabase และ Sentry projects/secrets
+- [ ] Apply migrations และผ่าน staging smoke/privacy-safe test event
+
+M-07A ยังไม่เป็น `DONE` จนกว่า staging smoke ผ่าน เพราะ remote accounts และ secrets ต้องให้ owner สร้างหรืออนุมัติ
+
+### M-07B — Production Launch and Recovery
+
+- [x] เลือก Vercel hosting และ Supabase environment model
 - [ ] สร้าง production owner account และยืนยัน public registration ปิด
 - [ ] Apply migrations บน staging แล้ว production ด้วย documented procedure
-- [ ] Audit RLS, grants, browser keys และ secret scanning
-- [ ] เพิ่ม error reporting, sync telemetry และ privacy-safe logs
+- [x] เตรียม RLS/database regression, browser-key validation และ secret-scanning gate
+- [x] เพิ่ม error reporting, sync telemetry และ privacy-safe logs
 - [ ] เปิด automated backups และทำ restore rehearsal
 - [ ] กำหนด retention, account recovery และ incident procedure
-- [ ] ตรวจ performance budget และ production bundle
+- [x] ตรวจ performance budget และ production bundle
 - [ ] รัน full regression, DB tests และ manual device smoke
 - [ ] ทำ release checklist, version/tag และ rollback instructions
 
@@ -389,7 +405,8 @@ MVP ถือว่าเสร็จเมื่อ:
 | — | M-04 | — | Completed; next M-05A |
 | 15 ส.ค. 2026 | M-05A.1 | `169036f` | Snapshot-safe History, retry hardening, cache validation และ dirty navigation guard; 130 DB assertions ผ่าน |
 | 15 ส.ค. 2026 | M-05B | migration `202608150002`; 94 unit, 149 DB และ 33 Playwright tests | Live Progress, PR integration และ accessible charts |
-| — | M-06/M-07 | — | QA และ production release |
+| 16 ส.ค. 2026 | M-06 automated gate | 54 Playwright + 104 unit + 149 DB tests | Chromium/Axe/Firefox/WebKit ผ่าน; manual sign-off ยังค้าง |
+| 16 ส.ค. 2026 | M-07A local foundation | working tree | PWA, typed config, privacy-safe telemetry, Vercel/CI และ runbooks; staging smoke รอ remote credentials |
 
 ## 17. Future backlog
 

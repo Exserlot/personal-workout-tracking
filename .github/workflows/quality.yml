@@ -1,0 +1,40 @@
+name: Quality Gate
+
+on:
+  pull_request:
+  workflow_call:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.16.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium firefox webkit
+      - run: pnpm exec supabase start
+      - run: pnpm exec supabase db reset
+      - run: pnpm exec supabase db lint --local
+      - run: pnpm exec supabase test db
+      - run: pnpm quality
+      - run: pnpm test:e2e
+      - run: pnpm test:pwa

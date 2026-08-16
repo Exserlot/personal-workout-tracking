@@ -1,4 +1,5 @@
 import { SupabaseRestClient } from "../../../lib/supabase/SupabaseRestClient";
+import { runtimeConfigState } from "../../../config/runtimeConfig";
 import { SupabaseWorkoutRepository } from "./WorkoutRepository";
 import type { WorkoutRepository } from "../domain/workout";
 
@@ -20,8 +21,7 @@ class UnconfiguredWorkoutRepository implements WorkoutRepository {
 }
 
 export function createSupabaseWorkoutRepository(): WorkoutRepository {
-  const url = import.meta.env.VITE_SUPABASE_URL;
-  const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ?? import.meta.env.VITE_SUPABASE_ANON_KEY;
-  if (!url || !anonKey) return new UnconfiguredWorkoutRepository();
-  return new SupabaseWorkoutRepository(new SupabaseRestClient({ url, anonKey }));
+  const config = runtimeConfigState.config;
+  if (!config) return new UnconfiguredWorkoutRepository();
+  return new SupabaseWorkoutRepository(new SupabaseRestClient({ url: config.supabaseUrl, anonKey: config.supabasePublishableKey }));
 }

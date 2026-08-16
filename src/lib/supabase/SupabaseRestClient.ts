@@ -1,3 +1,6 @@
+import { loadAuthSession } from "../../features/auth/authSession";
+import { telemetry } from "../telemetry/telemetry";
+
 export interface SupabaseRequest {
   method: "GET" | "POST" | "PATCH";
   path: string;
@@ -22,19 +25,10 @@ export interface SupabaseRestClientOptions {
   accessToken?: () => string | null;
 }
 
-function readSupabaseAccessToken() {
-  if (typeof localStorage === "undefined") return null;
-  for (let index = 0; index < localStorage.length; index += 1) {
-    const key = localStorage.key(index);
-    if (!key?.endsWith("-auth-token")) continue;
-    try {
-      const value = JSON.parse(localStorage.getItem(key) ?? "null") as { access_token?: unknown } | null;
-      if (typeof value?.access_token === "string" && value.access_token) return value.access_token;
-    } catch {
-      // Ignore unrelated localStorage values.
-    }
-  }
-  return null;
+export function readSupabaseAccessToken(storage?: Storage) {
+  const resolvedStorage = storage ?? (typeof localStorage === "undefined" ? null : localStorage);
+  if (!resolvedStorage) return null;
+  return loadAuthSession(resolvedStorage)?.accessToken ?? null;
 }
 
 export class SupabaseRestClient implements SupabaseDataClient {
@@ -58,11 +52,18 @@ export class SupabaseRestClient implements SupabaseDataClient {
       headers.set("Authorization", `Bearer ${this.options.anonKey}`);
     }
 
-    const response = await this.fetchImpl(`${this.options.url.replace(/\/$/, "")}/rest/v1/${path}`, {
-      method,
-      headers,
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    });
+    const operation = path.split("?")[0].replace(/^rpc\//, "rpc:");
+    let response: Response;
+    try {
+      response = await this.fetchImpl(`${this.options.url.replace(/\/$/, "")}/rest/v1/${path}`, {
+        method,
+        headers,
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      });
+    } catch (error) {
+      telemetry.captureException(error, { category: "network", operation, method });
+      throw error;
+    }
     const text = await response.text();
     let payload: unknown = null;
     if (text) {
@@ -72,7 +73,10 @@ export class SupabaseRestClient implements SupabaseDataClient {
         payload = text;
       }
     }
-    if (!response.ok) throw new SupabaseRequestError(response.status, payload);
+    if (!response.ok) {
+      telemetry.captureEvent("supabase_request_failed", { category: "server", operation, method, status: response.status });
+      throw new SupabaseRequestError(response.status, payload);
+    }
     return payload as T;
   }
 }

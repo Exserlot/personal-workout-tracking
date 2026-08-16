@@ -20,8 +20,9 @@ import {
   SupabaseRestClient,
   type SupabaseDataClient,
 } from "../../../lib/supabase/SupabaseRestClient";
+import { runtimeConfigState } from "../../../config/runtimeConfig";
 
-export { SupabaseRestClient } from "../../../lib/supabase/SupabaseRestClient";
+export { readSupabaseAccessToken, SupabaseRestClient } from "../../../lib/supabase/SupabaseRestClient";
 export type { SupabaseDataClient, SupabaseRequest } from "../../../lib/supabase/SupabaseRestClient";
 
 const EXERCISE_SELECT = [
@@ -295,10 +296,9 @@ class UnconfiguredExerciseRepository implements ExerciseRepository {
 }
 
 export function createSupabaseExerciseRepository(): ExerciseRepository {
-  const url = import.meta.env.VITE_SUPABASE_URL;
-  const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ?? import.meta.env.VITE_SUPABASE_ANON_KEY;
-  if (!url || !anonKey) {
+  const config = runtimeConfigState.config;
+  if (!config) {
     return new UnconfiguredExerciseRepository();
   }
-  return new SupabaseExerciseRepository(new SupabaseRestClient({ url, anonKey }));
+  return new SupabaseExerciseRepository(new SupabaseRestClient({ url: config.supabaseUrl, anonKey: config.supabasePublishableKey }));
 }

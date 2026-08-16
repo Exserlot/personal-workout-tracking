@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title id="title">FORM</title>
+  <rect width="512" height="512" fill="#0e0f11"/>
+  <rect x="72" y="72" width="28" height="368" fill="#e33a45"/>
+  <path fill="#f5f5f2" d="M148 112h268v76H228v66h166v74H228v112h-80z"/>
+</svg>

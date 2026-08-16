@@ -1242,7 +1242,7 @@ export function ActiveWorkoutPage() {
                     <p className="text-sm leading-6 text-ink-secondary">
                         Complete, Edit, Skip, Add, Delete, Finish และ Discard จะบันทึกในเครื่องก่อนและซิงก์อัตโนมัติ ส่วนการแก้โครงสร้างอื่นต้องออนไลน์
                     </p>
-                    <div className="mt-5 space-y-2">
+                    <div className="mb-24 mt-5 space-y-2 tablet:mb-0">
                         <Button
                             variant="secondary"
                             fullWidth

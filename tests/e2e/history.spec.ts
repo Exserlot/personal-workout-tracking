@@ -36,15 +36,16 @@ test.describe("Workout History", () => {
     await page.getByRole("button", { name: "แก้ไข History" }).click();
     await page.locator("textarea").first().fill("Updated note");
     await page.getByRole("button", { name: "บันทึกการแก้ไข" }).click();
-    await expect(page.getByRole("status")).toContainText("บันทึกการแก้ไขแล้ว");
+    await expect(page.getByText("บันทึกการแก้ไขแล้ว", { exact: true })).toBeVisible();
   });
 
   test("keeps mutation controls disabled offline and prevents horizontal overflow", async ({ page, context }) => {
     await setupAuth(page);
     await mockHistory(page);
     await page.goto(`/history/${sessionId}`);
+    await expect(page.getByRole("heading", { name: "History Push" })).toBeVisible();
     await context.setOffline(true);
-    await expect(page.getByText(/Offline/)).toBeVisible();
+    await expect(page.getByText(/Offline: ดูรายละเอียดได้/)).toBeVisible();
     await expect(page.getByRole("button", { name: "แก้ไข History" })).toBeDisabled();
     const widths = await page.evaluate(() => ({ body: document.body.scrollWidth, viewport: window.innerWidth }));
     expect(widths.body).toBeLessThanOrEqual(widths.viewport);
@@ -161,7 +162,7 @@ test.describe("Workout History", () => {
     await expect(notes).toHaveValue("Conflicted local draft");
     await page.getByRole("alertdialog").getByRole("button", { name: "โหลดจาก Server" }).click();
 
-    await expect(page.getByRole("status")).toContainText("โหลดข้อมูลล่าสุดจาก Server แล้ว");
+    await expect(page.getByText("โหลดข้อมูลล่าสุดจาก Server แล้ว", { exact: true })).toBeVisible();
     await expect(notes).toHaveValue("Session note");
     await expect(page.getByRole("button", { name: "แก้ไข History" })).toBeVisible();
   });

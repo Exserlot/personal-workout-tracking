@@ -21,6 +21,18 @@ async function syncQueueCount(page: Page) {
   }));
 }
 
+async function waitForOfflineShell(page: Page) {
+  await page.evaluate(async () => {
+    if (!("serviceWorker" in navigator)) return;
+    await navigator.serviceWorker.ready;
+    if (navigator.serviceWorker.controller) return;
+
+    await new Promise<void>((resolve) => {
+      navigator.serviceWorker.addEventListener("controllerchange", () => resolve(), { once: true });
+    });
+  });
+}
+
 function makeSession() {
   return {
     id: sessionId,
@@ -328,12 +340,13 @@ test.describe("Active Workout set logging", () => {
     await page.getByTestId("primary-set-action").click();
     await expect(page.getByTestId("sync-status")).toContainText("Synced", { timeout: 10_000 });
     await expect.poll(() => syncQueueCount(page)).toBe(0);
+    await waitForOfflineShell(page);
     await page.route(idempotentRpcPattern, abortSync);
     await context.setOffline(true);
     page.once("dialog", (dialog) => void dialog.accept());
     await page.getByRole("button", { name: "Finish Workout" }).click();
     await expect(page).toHaveURL(/\/workout\/complete\//);
-    await expect(page.getByText(/Saved locally|Offline/)).toBeVisible();
+    await expect(page.getByText(/Offline · บันทึก Summary/)).toBeVisible();
     await expect.poll(() => syncQueueCount(page)).toBe(1);
     await page.unroute(idempotentRpcPattern, abortSync);
     await context.setOffline(false);
@@ -342,6 +355,7 @@ test.describe("Active Workout set logging", () => {
   });
 
   test("discards offline without offering a second Start before sync", async ({ page, context }) => {
+    await waitForOfflineShell(page);
     await page.route(idempotentRpcPattern, abortSync);
     await context.setOffline(true);
     page.once("dialog", (dialog) => void dialog.accept());

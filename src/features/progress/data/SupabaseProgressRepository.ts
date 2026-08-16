@@ -1,4 +1,5 @@
 import { SupabaseRequestError, SupabaseRestClient, type SupabaseDataClient } from "../../../lib/supabase/SupabaseRestClient";
+import { runtimeConfigState } from "../../../config/runtimeConfig";
 import {
   ProgressRepositoryError,
   type ExerciseProgressDetail,
@@ -221,8 +222,7 @@ class UnconfiguredProgressRepository implements ProgressRepository {
 }
 
 export function createSupabaseProgressRepository(client?: SupabaseDataClient): ProgressRepository {
-  const url = import.meta.env.VITE_SUPABASE_URL;
-  const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ?? import.meta.env.VITE_SUPABASE_ANON_KEY;
-  if (!client && (!url || !anonKey)) return new UnconfiguredProgressRepository();
-  return new SupabaseProgressRepository(client ?? new SupabaseRestClient({ url, anonKey }));
+  const config = runtimeConfigState.config;
+  if (!client && !config) return new UnconfiguredProgressRepository();
+  return new SupabaseProgressRepository(client ?? new SupabaseRestClient({ url: config!.supabaseUrl, anonKey: config!.supabasePublishableKey }));
 }

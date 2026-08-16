@@ -1,4 +1,6 @@
 import { parseAuthSessionResponse, type AuthSession } from "./authSession";
+import { runtimeConfigState } from "../../config/runtimeConfig";
+import { telemetry } from "../../lib/telemetry/telemetry";
 
 export type AuthErrorCode = "configuration" | "invalid-credentials" | "network" | "unknown";
 
@@ -48,6 +50,7 @@ export class SupabaseAuthClient implements AuthClient {
         body: JSON.stringify(body),
       });
     } catch {
+      telemetry.captureEvent("auth_request_failed", { category: "network", operation: path.split("?")[0] });
       throw new AuthError("network", "เชื่อมต่อ Supabase ไม่สำเร็จ โปรดตรวจสอบว่า local services กำลังทำงาน");
     }
 
@@ -64,6 +67,11 @@ export class SupabaseAuthClient implements AuthClient {
     if (!response.ok) {
       const message = errorMessage(payload);
       const invalidCredentials = response.status === 400 && message.toLowerCase().includes("invalid login credentials");
+      telemetry.captureEvent("auth_request_failed", {
+        category: invalidCredentials ? "invalid-credentials" : "server",
+        operation: path.split("?")[0],
+        status: response.status,
+      });
       throw new AuthError(
         invalidCredentials ? "invalid-credentials" : "unknown",
         invalidCredentials ? "อีเมลหรือรหัสผ่านไม่ถูกต้อง" : "เข้าสู่ระบบไม่สำเร็จ โปรดลองอีกครั้ง",
@@ -106,8 +114,7 @@ class UnconfiguredAuthClient implements AuthClient {
 }
 
 export function createSupabaseAuthClient(): AuthClient {
-  const url = import.meta.env.VITE_SUPABASE_URL;
-  const publishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ?? import.meta.env.VITE_SUPABASE_ANON_KEY;
-  if (!url || !publishableKey) return new UnconfiguredAuthClient();
-  return new SupabaseAuthClient({ url, publishableKey });
+  const config = runtimeConfigState.config;
+  if (!config) return new UnconfiguredAuthClient();
+  return new SupabaseAuthClient({ url: config.supabaseUrl, publishableKey: config.supabasePublishableKey });
 }

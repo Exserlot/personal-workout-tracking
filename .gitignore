@@ -5,5 +5,7 @@ test-results/
 playwright-report/
 .pnpm-store/
 *.local
+.env*
+!.env.example
 *.log
 .DS_Store

@@ -1,6 +1,6 @@
 # M-06 QA Report
 
-วันที่ตรวจ: 15 สิงหาคม 2026
+วันที่ตรวจ: 16 สิงหาคม 2026
 
 ## Scope
 
@@ -11,16 +11,19 @@
 | Check | Result | Evidence |
 | --- | --- | --- |
 | TypeScript typecheck | PASS | `tsc -b` |
-| ESLint | PASS | `eslint src tests/e2e playwright.config.ts --max-warnings=0` |
-| Unit tests | PASS | 17 files, 94 tests |
+| ESLint | PASS | `eslint . --max-warnings=0` |
+| Unit tests | PASS | 20 files, 104 tests |
 | Production build | PASS | Vite production build |
+| Bundle budget | PASS | Initial JS 126,075 bytes gzip; largest lazy route 12,117 bytes gzip; precache 975,737 bytes |
 | Supabase schema lint | PASS | No schema errors found |
 | Supabase database regression | PASS | 7 files, 149 assertions |
-| Existing mobile Chromium suite | PASS | 34 tests |
+| Existing mobile Chromium suite | PASS | Workout, Today, Planning, Exercise, History, Progress และ Settings flows |
 | M-06 Chromium responsive suite | PASS | P-01–P-13, Skip Link, async route focus, modal focus/restore และ 320–1600px overflow |
 | Axe WCAG A/AA baseline | PASS | P-01–P-13 route states |
 | WebKit smoke | PASS | Mobile/desktop core routes และ keyboard navigation |
-| Firefox smoke | BLOCKED | Core-flow assertions complete แต่ Playwright Firefox ล้มเหลวระหว่าง `browserContext.close` ด้วย protocol error ของ local Windows runner |
+| Firefox smoke | PASS | Mobile/desktop core routes และ keyboard navigation; ไม่พบ protocol error ใน production-preview run ล่าสุด |
+| Full browser suite | PASS | 54/54 tests |
+| PWA suite | PASS | Manifest/icons, service-worker control, privacy-safe Cache Storage และ offline shell reload |
 
 The Axe run uses `@axe-core/playwright` with WCAG 2A/2AA, 2.1 AA and 2.2 AA tags. No rules are disabled globally and no element-specific exclusions are currently used.
 
@@ -34,6 +37,14 @@ The Axe run uses `@axe-core/playwright` with WCAG 2A/2AA, 2.1 AA and 2.2 AA tags
 - Rest Timer exposes a `role="timer"` value and announces start, pause, resume, reset, skip and finish without announcing every second.
 - Forced-colors focus/current-state rules and reduced-motion rules are present in the global layer.
 
-## Manual follow-up
+## Manual sign-off ที่ยังรอ
 
-Automated checks do not prove physical-device behavior, screen-reader usability, or full WCAG conformance. Before release, manually inspect 200% zoom, Windows High Contrast/forced colors, a real mobile keyboard covering the active Set action, VoiceOver/NVDA focus order, and touch targets on a physical phone. Rerun Firefox in CI or a clean runner without the `browserContext.close` protocol error before marking M-06 `DONE`.
+Automated checks do not prove physical-device behavior, screen-reader usability, or full WCAG conformance. ก่อนเปลี่ยน M-06 เป็น `DONE` ต้องลงผลรายการต่อไปนี้ใน [Release Checklist](release-checklist.md):
+
+- [ ] Physical phone: touch targets, bottom navigation และ keyboard ไม่บัง Active Set/action
+- [ ] Desktop 200% zoom และ Windows High Contrast
+- [ ] Keyboard-only: Login → Today → Workout → History → Progress
+- [ ] NVDA หรือ VoiceOver: headings, dialogs, form errors, timer และ charts
+- [ ] ติดตั้ง PWA, เปิดใหม่ และเปิด cached Active Workout ขณะ offline
+
+สถานะ M-06 จึงยังเป็น `PARTIAL` แม้ automated gate ผ่านทั้งหมดแล้ว

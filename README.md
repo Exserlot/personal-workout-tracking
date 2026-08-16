@@ -30,7 +30,7 @@ The interface follows a restrained dark-mode Swiss International Style:
 
 ## Current Status
 
-The repository contains product documentation, domain design, and a React application foundation. The Exercise Library uses a validated Supabase repository adapter, private owner authentication, protected routes, and row-level ownership. Workout planning and broader sync behavior remain future slices.
+The complete owner flow is implemented through Exercise Library, Planning, Today, online/offline Workout execution, History, Sync recovery and live Progress/PR calculations. Release hardening is in progress: the repository now includes an installable PWA foundation, typed environments, privacy-safe monitoring, bundle budgets and staging/production workflows. Production launch and backup/restore rehearsal are not complete.
 
 ## Tech Stack
 
@@ -40,6 +40,9 @@ The repository contains product documentation, domain design, and a React applic
 - Tailwind CSS
 - pnpm
 - Supabase REST API (browser-safe publishable/anon key only)
+- Vite PWA / Workbox application-shell precache
+- Vercel deployment workflows
+- Privacy-sanitized Sentry error reporting for hosted environments
 
 ## Development
 
@@ -48,12 +51,21 @@ pnpm install
 pnpm dev
 pnpm typecheck
 pnpm lint
+pnpm test
 pnpm build
+pnpm check:bundle
+pnpm test:pwa
 ```
 
 For local database setup, see [docs/supabase-local-setup.md](docs/supabase-local-setup.md).
 
 For current milestone status, completed work, next tasks, and release gates, see [docs/project-roadmap.md](docs/project-roadmap.md).
+
+Hosted environment and release preparation:
+
+- [Deployment environments](docs/deployment-environments.md)
+- [Monitoring and privacy](docs/monitoring-privacy.md)
+- [Release checklist](docs/release-checklist.md)
 
 ## Local Supabase Initial Setup
 
@@ -81,8 +93,11 @@ The important local endpoints are:
 Copy the publishable key shown by `pnpm exec supabase status` into a new `.env.local` file:
 
 ```dotenv
+VITE_APP_ENV=local
+VITE_APP_VERSION=dev
 VITE_SUPABASE_URL=http://127.0.0.1:54321
 VITE_SUPABASE_PUBLISHABLE_KEY=<Publishable key from supabase status>
+VITE_SENTRY_DSN=
 ```
 
 Never put the `Secret` or `service_role` key in a `VITE_*` variable, source code, or Git. `.env.local` is ignored by Git.
@@ -124,9 +139,11 @@ pnpm typecheck
 pnpm lint
 pnpm test
 pnpm build
+pnpm check:bundle
 pnpm exec supabase db lint --local
 pnpm exec supabase test db
 pnpm test:e2e
+pnpm test:pwa
 ```
 
 The Playwright suite expects the Vite app and local Supabase services to be available.

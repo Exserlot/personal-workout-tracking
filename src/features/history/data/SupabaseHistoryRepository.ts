@@ -1,5 +1,6 @@
 import { SupabaseRestClient, type SupabaseDataClient } from "../../../lib/supabase/SupabaseRestClient";
 import { SupabaseRequestError } from "../../../lib/supabase/SupabaseRestClient";
+import { runtimeConfigState } from "../../../config/runtimeConfig";
 import { parseWorkoutSession, WORKOUT_SESSION_SELECT } from "../../workout/data/WorkoutRepository";
 import type { WorkoutSession } from "../../workout/domain/workout";
 import { HistoryRepositoryError, historySummaryFromSession, type HistoryDeleteInput, type HistoryPageResult, type HistoryQuery, type HistoryRepository, type HistoryUpdateInput } from "../domain/history";
@@ -175,8 +176,7 @@ class UnconfiguredHistoryRepository implements HistoryRepository {
 }
 
 export function createSupabaseHistoryRepository(client?: SupabaseDataClient): HistoryRepository {
-  const url = import.meta.env.VITE_SUPABASE_URL;
-  const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ?? import.meta.env.VITE_SUPABASE_ANON_KEY;
-  if (!client && (!url || !anonKey)) return new UnconfiguredHistoryRepository();
-  return new SupabaseHistoryRepository(client ?? new SupabaseRestClient({ url, anonKey }));
+  const config = runtimeConfigState.config;
+  if (!client && !config) return new UnconfiguredHistoryRepository();
+  return new SupabaseHistoryRepository(client ?? new SupabaseRestClient({ url: config!.supabaseUrl, anonKey: config!.supabasePublishableKey }));
 }

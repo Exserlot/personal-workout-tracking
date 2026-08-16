@@ -112,7 +112,7 @@ MVP ครอบคลุม Exercise Library, Workout Templates, Routine, Today
 
 ### Exercise Library — P-03/P-04
 
-- [x] Starter catalog 50 Exercises พร้อม muscles, equipment และ notes
+- [x] Starter catalog 100 Exercises พร้อม muscles, equipment และ notes
 - [x] Search, muscle/equipment/status filters และ pagination
 - [x] Responsive desktop table และ mobile list
 - [x] Create/Edit Custom Exercise พร้อม accessible validation

@@ -52,7 +52,7 @@ pnpm dev
 
 1. ระบบส่งไปหน้า Login เมื่อยังไม่มี session
 2. Login ด้วย owner ที่สร้างไว้ แล้วเปิด **Exercises**
-3. ต้องเห็น Starter Exercises 50 รายการ จาก catalog ที่รวม Parallel Bar Dips และรายการที่ซ้ำข้ามกลุ่มใช้ record เดียว
+3. ต้องเห็น Starter Exercises 100 รายการ จาก catalog ที่ครอบคลุมทุก muscle/equipment code รวม Parallel Bar Dips และรายการที่ซ้ำข้ามกลุ่มใช้ record เดียว
 4. สร้าง Custom Exercise แล้ว refresh หน้า; รายการต้องยังอยู่
 5. เปิดรายละเอียด แก้ข้อมูล และบันทึก
 6. Archive รายการ แล้วตรวจด้วยตัวกรอง Archived
@@ -64,7 +64,7 @@ pnpm dev
 
 ### Planning module local checks
 
-Migrations `202608080003_planning.sql` through `202608080005_planning_constraint_names.sql` create the Template, Routine, ordered child tables and integrity constraints. Migrations `202608080006_starter_exercise_catalog.sql` and `202608080007_parallel_bar_dips.sql` add the expanded starter exercise catalog. After pulling them, apply pending migrations incrementally (or reset a disposable local database so all migrations and starter exercises are applied):
+Migrations `202608080003_planning.sql` through `202608080005_planning_constraint_names.sql` create the Template, Routine, ordered child tables and integrity constraints. Migrations `202608080006_starter_exercise_catalog.sql`, `202608080007_parallel_bar_dips.sql` and `202608160001_expand_starter_exercise_catalog.sql` build the reviewed 100-exercise starter catalog. After pulling them, apply pending migrations incrementally (or reset a disposable local database so all migrations and starter exercises are applied):
 
 ```powershell
 pnpm exec supabase db push --local
@@ -80,7 +80,7 @@ Planning mutations are online-only in this slice. Active Workout snapshot, sessi
 
 ### Starter exercise catalog
 
-Migrations `202608080006_starter_exercise_catalog.sql` and `202608080007_parallel_bar_dips.sql` expand the starter catalog to 50 unique exercises covering the requested chest, back, arms, legs and core placements, including standard Parallel Bar Dips. They preserve the original six starter UUIDs, keep starter rows ownerless, and replace secondary-muscle rows in sequence. Apply and validate them with:
+Migrations `202608080006_starter_exercise_catalog.sql`, `202608080007_parallel_bar_dips.sql` and `202608160001_expand_starter_exercise_catalog.sql` expand the starter catalog to 100 unique exercises. The catalog represents all 10 controlled muscle groups and all 6 supported equipment types, with added emphasis on shoulders, hamstrings, glutes and calves. The migrations preserve existing starter UUIDs, keep starter rows ownerless, and replace secondary-muscle rows in sequence. Apply and validate them with:
 
 ```powershell
 pnpm exec supabase db push --local

@@ -109,7 +109,7 @@ Plan editing, Exercise mutations, History edits และ Progress queries ต�
 
 **Deliverables**
 
-- Starter/custom Exercise Library, controlled metadata, search/filter และ archive
+- Starter Exercise Library 100 ท่าและ Custom Exercise Library พร้อม controlled metadata, search/filter และ archive
 - Workout Template Editor พร้อม targets และ reorder alternatives
 - Routine sequence, weekly frequency และ single Active Routine
 - Today empty/setup state

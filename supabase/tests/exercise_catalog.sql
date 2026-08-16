@@ -1,11 +1,11 @@
 begin;
 
-select plan(14);
+select plan(17);
 
 select is(
   (select count(*)::int from public.exercises where owner_user_id is null),
-  50,
-  'starter catalog contains 50 unique exercises'
+  100,
+  'starter catalog contains 100 unique exercises'
 );
 
 select is(
@@ -49,6 +49,22 @@ select is((select id::text from public.exercises where normalized_name = 'barbel
 select is((select id::text from public.exercises where normalized_name = 'barbell romanian deadlift' and owner_user_id is null), '00000000-0000-0000-0000-000000000003', 'romanian deadlift keeps its UUID');
 
 select is((select id::text from public.exercises where normalized_name = 'parallel bar dips' and owner_user_id is null), '00000000-0000-0000-0000-000000000050', 'parallel bar dips has a stable UUID');
+select is((select id::text from public.exercises where normalized_name = 'barbell hip thrust' and owner_user_id is null), '00000000-0000-0000-0000-000000000087', 'barbell hip thrust has a stable UUID');
+
+select is(
+  (select count(distinct primary_muscle.code)::int
+   from public.exercises exercise
+   join public.muscles primary_muscle on primary_muscle.id = exercise.primary_muscle_id
+   where exercise.owner_user_id is null),
+  10,
+  'starter catalog represents every supported primary muscle group'
+);
+
+select is(
+  (select count(distinct equipment_code)::int from public.exercises where owner_user_id is null),
+  6,
+  'starter catalog represents every supported equipment type'
+);
 
 select ok(
   exists (

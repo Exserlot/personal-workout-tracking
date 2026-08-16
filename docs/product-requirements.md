@@ -71,7 +71,7 @@
 
 ### 5.2 Exercise Library
 
-- **FR-EX-01 — Starter Library:** ระบบต้องมีรายการท่าพื้นฐานที่ค้นหาได้ พร้อมชื่อ primary muscle, secondary muscles, equipment และคำแนะนำวิธีเล่นแบบสั้น
+- **FR-EX-01 — Starter Library:** ระบบต้องมี Starter Exercises 100 รายการที่ค้นหาได้ ครอบคลุม controlled muscle/equipment vocabulary พร้อมชื่อ primary muscle, secondary muscles, equipment และคำแนะนำวิธีเล่นแบบสั้น
 - **FR-EX-02 — Search and filter:** ผู้ใช้ต้องค้นหาด้วยชื่อและกรองตาม muscle/equipment ได้
 - **FR-EX-03 — Custom Exercise:** ผู้ใช้ต้องสร้างและแก้ Exercise ส่วนตัวได้ โดยชื่อห้ามว่างและต้องไม่ซ้ำแบบ case-insensitive ภายใน owner account
 - **FR-EX-04 — Archive:** Exercise ที่ถูกอ้างอิงโดย Template หรือ Session ต้อง archive แทน hard delete และยังแสดงชื่อเดิมใน History
@@ -238,7 +238,7 @@ Progress เป็น derived data จาก Completed Sessions ไม่ใช�
 - มี owner account เดียวและ timezone หลักเดียวใน MVP
 - น้ำหนักเก็บในหน่วยมาตรฐานเดียวและแสดงเป็นกิโลกรัมโดย default
 - Critical offline scope ครอบคลุม Active Workout; Plan editing และ Progress ต้อง online
-- Starter Library เป็นรายการพื้นฐานพร้อม metadata และคำแนะนำสั้น ไม่มีไฟล์ภาพหรือวิดีโอที่ระบบจัดเก็บ/คัดสรรเอง; ตัวเลือกท่าอาจเชื่อมไปยังผลการค้นหาวิดีโอภายนอกอย่างชัดเจน
+- Starter Library เป็นรายการพื้นฐาน 100 ท่าพร้อม metadata และคำแนะนำสั้น ครอบคลุม muscle groups และ equipment codes ที่ระบบรองรับ โดยไม่มีไฟล์ภาพหรือวิดีโอที่ระบบจัดเก็บ/คัดสรรเอง; ตัวเลือกท่าอาจเชื่อมไปยังผลการค้นหาวิดีโอภายนอกอย่างชัดเจน
 - ใช้ managed cloud services เพื่อให้อยู่ในกรอบ 6–8 สัปดาห์
 
 ### Risks และ mitigation

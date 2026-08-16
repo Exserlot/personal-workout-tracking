@@ -43,8 +43,8 @@ export function TrendChart({ title, description, points, formatValue }: TrendCha
           </a>
         ))}
       </svg>
-      <figcaption className="mt-4 border-t border-line-subtle pt-3 text-sm leading-6 text-ink-secondary">{description}</figcaption>
-      <details className="mt-4 border-t border-line-subtle pt-3">
+      <figcaption className="mt-4 text-sm leading-6 text-ink-secondary">{description}</figcaption>
+      <details className="mt-2">
         <summary className="min-h-11 cursor-pointer py-3 text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-ink">ดูข้อมูลกราฟแบบตาราง</summary>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[28rem] text-left text-sm">

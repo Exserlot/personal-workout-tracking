@@ -33,7 +33,13 @@ test.describe("Workout History", () => {
     await expect(page.getByText("History Push", { exact: true }).first()).toBeVisible();
     await page.locator('a[href^="/history/"]').first().click();
     await expect(page.locator("span#exercise-history-exercise-1")).toBeVisible();
+    await expect(page.getByText("70 KG", { exact: true })).toBeVisible();
+    await expect(page.getByRole("spinbutton")).toHaveCount(0);
+    await expect(page.getByRole("combobox", { name: "เปลี่ยนท่า Barbell Bench Press" })).toHaveCount(0);
     await page.getByRole("button", { name: "แก้ไข History" }).click();
+    await expect(page.getByRole("spinbutton", { name: "Set 1 weight", exact: true })).toBeVisible();
+    const widths = await page.evaluate(() => ({ body: document.body.scrollWidth, viewport: window.innerWidth }));
+    expect(widths.body).toBeLessThanOrEqual(widths.viewport);
     await page.locator("textarea").first().fill("Updated note");
     await page.getByRole("button", { name: "บันทึกการแก้ไข" }).click();
     await expect(page.getByText("บันทึกการแก้ไขแล้ว", { exact: true })).toBeVisible();
@@ -163,7 +169,8 @@ test.describe("Workout History", () => {
     await page.getByRole("alertdialog").getByRole("button", { name: "โหลดจาก Server" }).click();
 
     await expect(page.getByText("โหลดข้อมูลล่าสุดจาก Server แล้ว", { exact: true })).toBeVisible();
-    await expect(notes).toHaveValue("Session note");
+    await expect(page.getByText("Session note", { exact: true })).toBeVisible();
+    await expect(notes).toHaveCount(0);
     await expect(page.getByRole("button", { name: "แก้ไข History" })).toBeVisible();
   });
 

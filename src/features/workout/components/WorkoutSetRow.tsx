@@ -1,6 +1,7 @@
 import { Icon } from "../../../components/icons/Icon";
 import { Button } from "../../../components/ui/Button";
 import { cn } from "../../../lib/cn";
+import { readNumberInput } from "../../../lib/numberInput";
 import type { SetDraftErrors, SetDraftValue } from "../domain/workoutRules";
 import type { SessionSet } from "../domain/workout";
 
@@ -107,7 +108,7 @@ export function WorkoutSetRow({ set, draft, errors, expanded, isBodyweight = fal
               aria-invalid={errors.weight ? true : undefined}
               aria-describedby={errors.weight ? `${set.id}-weight-error` : undefined}
               className={cn("min-h-12 w-full min-w-0 rounded-xs border border-line bg-surface px-2 text-center text-2xl font-semibold leading-none tabular-nums text-ink outline-none focus-visible:border-line-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink tablet:min-h-11", errors.weight && "border-error")}
-              onChange={(event) => onChange("weight", event.target.value)}
+              onChange={(event) => onChange("weight", readNumberInput(event.currentTarget))}
             />
             <select
               aria-label={`หน่วย เซ็ต ${set.sequence}`}
@@ -136,7 +137,7 @@ export function WorkoutSetRow({ set, draft, errors, expanded, isBodyweight = fal
             aria-invalid={errors.reps ? true : undefined}
             aria-describedby={errors.reps ? `${set.id}-reps-error` : undefined}
             className={cn("min-h-12 w-full min-w-0 rounded-xs border border-line bg-surface px-2 text-center text-2xl font-semibold leading-none tabular-nums text-ink outline-none focus-visible:border-line-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink tablet:min-h-11", errors.reps && "border-error")}
-            onChange={(event) => onChange("reps", event.target.value)}
+            onChange={(event) => onChange("reps", readNumberInput(event.currentTarget))}
           />
           <FieldError id={`${set.id}-reps-error`} message={errors.reps} />
         </div>
@@ -167,7 +168,7 @@ export function WorkoutSetRow({ set, draft, errors, expanded, isBodyweight = fal
               aria-invalid={errors.effort ? true : undefined}
               aria-describedby={errors.effort ? `${set.id}-effort-error` : undefined}
               className={cn("min-h-12 w-full min-w-0 rounded-xs border border-line bg-surface px-2 text-center text-2xl font-semibold leading-none tabular-nums text-ink outline-none focus-visible:border-line-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink tablet:min-h-11", errors.effort && "border-error")}
-              onChange={(event) => onChange("effort", event.target.value)}
+              onChange={(event) => onChange("effort", readNumberInput(event.currentTarget))}
             />
           </div>
           <FieldError id={`${set.id}-effort-error`} message={errors.effort} />

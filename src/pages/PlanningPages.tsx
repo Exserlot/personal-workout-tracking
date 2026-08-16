@@ -5,8 +5,8 @@ import {
     useRef,
     useState,
     type ChangeEvent,
-    type KeyboardEvent as ReactKeyboardEvent,
     type ReactNode,
+    type RefObject,
 } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { Icon } from "../components/icons/Icon";
@@ -14,6 +14,7 @@ import { PageFrame } from "../components/layout/PageFrame";
 import { Button } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
 import { Input } from "../components/ui/Input";
+import { ModalDialog } from "../components/ui/ModalDialog";
 import { SectionHeader } from "../components/ui/SectionHeader";
 import { Select } from "../components/ui/Select";
 import { Textarea } from "../components/ui/Textarea";
@@ -45,9 +46,11 @@ import {
 } from "../features/planning/domain/planningRules";
 import { PlanningRepositoryError } from "../features/planning/data/PlanningRepository";
 import { ExerciseFilterPopover } from "../features/exercises/components/ExerciseFilterPopover";
+import { ExerciseSelectionItem } from "../features/exercises/components/ExerciseSelectionItem";
 import { useWorkoutRepository } from "../features/workout/WorkoutRepositoryContext";
 import { getDeviceId } from "../features/workout/data/deviceIdentity";
 import type { WorkoutSession } from "../features/workout/domain/workout";
+import { readNumberInput } from "../lib/numberInput";
 
 const blankTemplate: WorkoutTemplateDraft = {
     name: "",
@@ -59,6 +62,7 @@ const blankRoutine: RoutineDraft = {
     weeklyFrequencyTarget: 3,
     days: [],
 };
+const createTemplateOption = "__create-template__";
 
 function errorMessage(error: unknown) {
     return error instanceof PlanningRepositoryError
@@ -564,14 +568,7 @@ export function PlansPage() {
                                     </li>
                                 ))}
                             </ol>
-                        ) : (
-                            <EmptyState
-                                marker="00"
-                                title="ยังไม่มี Active Routine"
-                                description="เลือกสร้าง Routine ใหม่ หรือเปิดใช้งาน Routine ที่บันทึกไว้ เพื่อให้ Today แสดงลำดับถัดไป"
-                                showTopRule={false}
-                            />
-                        )}
+                        ) : null}
                     </section>
 
                     {otherSavedRoutines.length > 0 ? (
@@ -760,9 +757,7 @@ export function PlansPage() {
                                         onChange={(event) =>
                                             setRoutineDraft({
                                                 ...routineDraft,
-                                                weeklyFrequencyTarget: Number(
-                                                    event.target.value,
-                                                ),
+                                                weeklyFrequencyTarget: Number(readNumberInput(event.currentTarget)),
                                             })
                                         }
                                         unit="ครั้ง"
@@ -834,6 +829,10 @@ export function PlansPage() {
                                                             onChange={(
                                                                 event,
                                                             ) => {
+                                                                if (event.target.value === createTemplateOption) {
+                                                                    navigate("/plans/templates/new");
+                                                                    return;
+                                                                }
                                                                 const template =
                                                                     templates.find(
                                                                         (
@@ -870,8 +869,8 @@ export function PlansPage() {
                                                                 );
                                                             }}
                                                         >
-                                                            <option value="">
-                                                                เลือก Template
+                                                            <option value={createTemplateOption}>
+                                                                + เพิ่ม Template ใหม่
                                                             </option>
                                                             {templates
                                                                 .filter(
@@ -1000,8 +999,119 @@ export function PlansPage() {
 }
 
 function numberValue(event: ChangeEvent<HTMLInputElement>) {
-    const value = Number(event.target.value);
+    const value = Number(readNumberInput(event.currentTarget));
     return Number.isFinite(value) ? value : 0;
+}
+
+interface TemplateExercisePickerPanelProps {
+    visibleExercises: Exercise[];
+    selectedExerciseIds: Set<string>;
+    search: string;
+    muscleFilter: MuscleCode | "all";
+    equipmentFilter: EquipmentCode | "all";
+    onSearchChange: (value: string) => void;
+    onMuscleChange: (value: MuscleCode | "all") => void;
+    onEquipmentChange: (value: EquipmentCode | "all") => void;
+    onAdd: (exercise: Exercise) => void;
+    onClose?: () => void;
+    closeButtonRef?: RefObject<HTMLButtonElement | null>;
+}
+
+function TemplateExercisePickerPanel({
+    visibleExercises,
+    selectedExerciseIds,
+    search,
+    muscleFilter,
+    equipmentFilter,
+    onSearchChange,
+    onMuscleChange,
+    onEquipmentChange,
+    onAdd,
+    onClose,
+    closeButtonRef,
+}: TemplateExercisePickerPanelProps) {
+    const pickerContent = (
+        <>
+            <div className="flex min-w-0 items-end gap-2">
+                <div className="min-w-0 flex-1">
+                    <Input
+                        label="ค้นหาท่า"
+                        type="search"
+                        placeholder="เช่น Bench Press"
+                        value={search}
+                        onChange={(event) => onSearchChange(event.target.value)}
+                    />
+                </div>
+                <ExerciseFilterPopover
+                    muscleFilter={muscleFilter}
+                    equipmentFilter={equipmentFilter}
+                    onMuscleChange={onMuscleChange}
+                    onEquipmentChange={onEquipmentChange}
+                />
+            </div>
+            <div className="mt-4 border-t border-line">
+                {visibleExercises.length === 0 ? (
+                    <p className="border-b border-line-subtle py-4 text-sm text-ink-muted">
+                        ไม่พบท่าที่ตรงกับตัวกรอง
+                    </p>
+                ) : (
+                    visibleExercises.map((exercise) => {
+                        const alreadyAdded = selectedExerciseIds.has(exercise.id);
+                        return (
+                            <ExerciseSelectionItem
+                                key={exercise.id}
+                                exercise={exercise}
+                                actionLabel={alreadyAdded ? "เพิ่มแล้ว" : "เพิ่ม"}
+                                actionDisabled={Boolean(exercise.archivedAt) || alreadyAdded}
+                                onAction={() => onAdd(exercise)}
+                            />
+                        );
+                    })
+                )}
+            </div>
+        </>
+    );
+
+    if (!onClose) {
+        return (
+            <>
+                <SectionHeader
+                    eyebrow="EXERCISE LIBRARY"
+                    title="เลือกท่า"
+                    showTopRule={false}
+                />
+                <div className="mt-5 max-h-[42rem] overflow-y-auto pr-1">
+                    {pickerContent}
+                </div>
+            </>
+        );
+    }
+
+    return (
+        <div className="flex h-full min-h-0 flex-col">
+            <header className="flex shrink-0 items-start justify-between gap-3 border-b border-line bg-canvas px-4 py-4">
+                <div>
+                    <p className="text-xs font-semibold tracking-[0.08em] text-accent">
+                        EXERCISE LIBRARY
+                    </p>
+                    <h2 className="mt-2 text-h3">เลือกท่า</h2>
+                </div>
+                <Button
+                    ref={closeButtonRef}
+                    variant="quiet"
+                    type="button"
+                    className="h-12 w-12 shrink-0 !p-0"
+                    aria-label="ปิด Library"
+                    onClick={onClose}
+                >
+                    <Icon name="close" className="h-6 w-6 shrink-0" />
+                </Button>
+            </header>
+            <div data-exercise-picker-scroll className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+                {pickerContent}
+            </div>
+        </div>
+    );
 }
 
 export function TemplateEditorPage() {
@@ -1027,10 +1137,8 @@ export function TemplateEditorPage() {
     const [exercisePickerOpen, setExercisePickerOpen] = useState(false);
     const [templateStep, setTemplateStep] = useState<"details" | "exercises" | "targets">("details");
     const [expandedExerciseId, setExpandedExerciseId] = useState<string | null>(null);
-    const exercisePickerRef = useRef<HTMLDivElement>(null);
     const exercisePickerTriggerRef = useRef<HTMLButtonElement>(null);
     const exercisePickerCloseRef = useRef<HTMLButtonElement>(null);
-    const exercisePickerWasOpenRef = useRef(false);
 
     useEffect(() => {
         void exerciseRepository
@@ -1084,35 +1192,6 @@ export function TemplateEditorPage() {
         document.getElementById(`${expandedExerciseId}-summary`)?.focus();
     }, [expandedExerciseId]);
 
-    useEffect(() => {
-        if (exercisePickerOpen) {
-            exercisePickerWasOpenRef.current = true;
-            exercisePickerCloseRef.current?.focus();
-        } else if (exercisePickerWasOpenRef.current) {
-            exercisePickerWasOpenRef.current = false;
-            exercisePickerTriggerRef.current?.focus();
-        }
-    }, [exercisePickerOpen]);
-
-    function trapExercisePickerFocus(event: ReactKeyboardEvent<HTMLDivElement>) {
-        if (event.key !== "Tab" || !exercisePickerRef.current) return;
-        const focusable = Array.from(
-            exercisePickerRef.current.querySelectorAll<HTMLElement>(
-                'button:not([disabled]), input:not([disabled]), select:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
-            ),
-        );
-        if (focusable.length === 0) return;
-        const first = focusable[0];
-        const last = focusable[focusable.length - 1];
-        if (event.shiftKey && document.activeElement === first) {
-            event.preventDefault();
-            last.focus();
-        } else if (!event.shiftKey && document.activeElement === last) {
-            event.preventDefault();
-            first.focus();
-        }
-    }
-
     const visibleExercises = useMemo(
         () =>
             filterExercises(exercises, {
@@ -1122,6 +1201,10 @@ export function TemplateEditorPage() {
                 status: "all",
             }),
         [equipmentFilter, exercises, muscleFilter, search],
+    );
+    const selectedExerciseIds = useMemo(
+        () => new Set(draft.exercises.map((exercise) => exercise.exerciseId)),
+        [draft.exercises],
     );
 
     function updateDraft(next: WorkoutTemplateDraft) {
@@ -1281,114 +1364,46 @@ export function TemplateEditorPage() {
                             </button>
                         ))}
                     </nav>
-                    {exercisePickerOpen ? <div className="fixed inset-0 z-20 bg-canvas/80 desktop:hidden" aria-hidden="true" /> : null}
                     <div className="relative grid gap-8 desktop:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
-                        <div
-                            ref={exercisePickerOpen ? exercisePickerRef : undefined}
-                            role={exercisePickerOpen ? "dialog" : undefined}
-                            aria-modal={exercisePickerOpen ? true : undefined}
-                            aria-label={exercisePickerOpen ? "Exercise Library" : undefined}
-                            onKeyDown={exercisePickerOpen ? trapExercisePickerFocus : undefined}
-                            className={
-                                exercisePickerOpen
-                                ? "fixed inset-4 z-30 w-[min(22rem,calc(100vw-2rem))] overflow-y-auto border border-line bg-canvas p-4 tablet:inset-y-4 tablet:left-20 tablet:right-auto tablet:w-80 desktop:static desktop:block desktop:w-auto desktop:overflow-visible desktop:border-0 desktop:bg-transparent desktop:p-0"
-                                : "hidden desktop:block"
-                            }
-                        >
-                            <div className="sticky top-0 z-10 mb-3 bg-canvas pb-3 desktop:hidden">
-                                <Button
-                                    ref={exercisePickerCloseRef}
-                                    variant="quiet"
-                                    type="button"
-                                    className="h-11 w-11 p-0"
-                                    aria-label="ปิด Library"
-                                    onClick={() => setExercisePickerOpen(false)}
-                                >
-                                    <Icon name="close" className="h-5 w-5" />
-                                </Button>
-                            </div>
-                            <SectionHeader
-                                eyebrow="EXERCISE LIBRARY"
-                                title="เลือกท่า"
-                                showTopRule={false}
+                        <div className="hidden desktop:block">
+                            <TemplateExercisePickerPanel
+                                visibleExercises={visibleExercises}
+                                selectedExerciseIds={selectedExerciseIds}
+                                search={search}
+                                muscleFilter={muscleFilter}
+                                equipmentFilter={equipmentFilter}
+                                onSearchChange={setSearch}
+                                onMuscleChange={setMuscleFilter}
+                                onEquipmentChange={setEquipmentFilter}
+                                onAdd={addExercise}
                             />
-                            <div className="mt-5 space-y-4">
-                                <div className="flex min-w-0 items-end gap-2">
-                                    <div className="min-w-0 flex-1">
-                                        <Input
-                                            label="ค้นหาท่า"
-                                            type="search"
-                                            placeholder="เช่น Bench Press"
-                                            value={search}
-                                            onChange={(event) =>
-                                                setSearch(event.target.value)
-                                            }
-                                        />
-                                    </div>
-                                    <ExerciseFilterPopover
-                                        muscleFilter={muscleFilter}
-                                        equipmentFilter={equipmentFilter}
-                                        onMuscleChange={setMuscleFilter}
-                                        onEquipmentChange={setEquipmentFilter}
-                                    />
-                                </div>
-                                <div className="max-h-[34rem] overflow-y-auto border-t border-line">
-                                    {visibleExercises.length === 0 ? (
-                                        <p className="border-b border-line-subtle py-4 text-sm text-ink-muted">
-                                            ไม่พบท่าที่ตรงกับตัวกรอง
-                                        </p>
-                                    ) : (
-                                        visibleExercises.map((exercise) => (
-                                            <div
-                                                key={exercise.id}
-                                                className="flex min-w-0 items-center justify-between gap-3 border-b border-line-subtle py-3"
-                                            >
-                                                <div className="min-w-0">
-                                                    <p className="truncate text-sm font-semibold">
-                                                        {exercise.name}
-                                                    </p>
-                                                    <p className="mt-1 text-xs text-ink-muted">
-                                                        {exercise.source ===
-                                                        "starter"
-                                                            ? "Starter"
-                                                            : "Custom"}
-                                                        {exercise.archivedAt
-                                                            ? " · Archived"
-                                                            : ""}
-                                                    </p>
-                                                </div>
-                                                <Button
-                                                    variant="quiet"
-                                                    size="compact"
-                                                    type="button"
-                                                    disabled={
-                                                        Boolean(
-                                                            exercise.archivedAt,
-                                                        ) ||
-                                                        draft.exercises.some(
-                                                            (item) =>
-                                                                item.exerciseId ===
-                                                                exercise.id,
-                                                        )
-                                                    }
-                                                    onClick={() =>
-                                                        addExercise(exercise)
-                                                    }
-                                                >
-                                                    {draft.exercises.some(
-                                                        (item) =>
-                                                            item.exerciseId ===
-                                                            exercise.id,
-                                                    )
-                                                        ? "เพิ่มแล้ว"
-                                                        : "เพิ่ม"}
-                                                </Button>
-                                            </div>
-                                        ))
-                                    )}
-                                </div>
-                            </div>
                         </div>
+                        {exercisePickerOpen ? (
+                            <ModalDialog
+                                open
+                                onClose={() => setExercisePickerOpen(false)}
+                                triggerRef={exercisePickerTriggerRef}
+                                initialFocusRef={exercisePickerCloseRef}
+                                title="Exercise Library"
+                                variant="drawer"
+                                className="overflow-hidden border-r border-line bg-canvas p-0 shadow-overlay desktop:hidden"
+                                titleClassName="sr-only"
+                            >
+                                <TemplateExercisePickerPanel
+                                    visibleExercises={visibleExercises}
+                                    selectedExerciseIds={selectedExerciseIds}
+                                    search={search}
+                                    muscleFilter={muscleFilter}
+                                    equipmentFilter={equipmentFilter}
+                                    onSearchChange={setSearch}
+                                    onMuscleChange={setMuscleFilter}
+                                    onEquipmentChange={setEquipmentFilter}
+                                    onAdd={addExercise}
+                                    onClose={() => setExercisePickerOpen(false)}
+                                    closeButtonRef={exercisePickerCloseRef}
+                                />
+                            </ModalDialog>
+                        ) : null}
                         <section className="min-w-0">
                             <div className={`mb-5 desktop:hidden ${templateStep === "exercises" ? "" : "hidden"}`}>
                                 <Button

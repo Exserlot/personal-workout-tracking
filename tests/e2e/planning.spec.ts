@@ -47,7 +47,7 @@ test.describe("Workout Plans and Routine", () => {
       const url = new URL(request.url());
       const resource = url.pathname.split("/").pop();
       if (resource === "exercises") {
-        await route.fulfill({ json: [{ id: "exercise-bench", name: "Barbell Bench Press", normalized_name: "barbell bench press", equipment_code: "barbell", notes: "", owner_user_id: null, archived_at: null, version: 1, primary_muscle: { code: "chest" }, exercise_secondary_muscles: [] }] });
+        await route.fulfill({ json: [{ id: "exercise-bench", name: "Barbell Bench Press", normalized_name: "barbell bench press", equipment_code: "barbell", notes: "เก็บสะบัก ลดบาร์อย่างควบคุม และดันกลับโดยไม่ยกไหล่", owner_user_id: null, archived_at: null, version: 1, primary_muscle: { code: "chest" }, exercise_secondary_muscles: [] }] });
         return;
       }
       if (resource === "workout_templates") {
@@ -142,17 +142,73 @@ test.describe("Workout Plans and Routine", () => {
     await page.goto("/plans/templates/new");
     await page.getByLabel("ชื่อ Template").fill("Push A");
     await page.getByRole("button", { name: "ถัดไป", exact: true }).click();
-    await page.getByRole("button", { name: "เลือก Exercise จาก Library", exact: true }).click();
-    await page.getByRole("button", { name: "เพิ่ม", exact: true }).click();
-    await page.getByRole("button", { name: "ปิด Library", exact: true }).click({ force: true });
+    const pickerTrigger = page.getByRole("button", { name: "เลือก Exercise จาก Library", exact: true });
+    await pickerTrigger.click();
+    const picker = page.getByRole("dialog", { name: "Exercise Library" });
+    const pickerClose = page.getByRole("button", { name: "ปิด Library", exact: true });
+    await expect(picker).toBeVisible();
+    await expect(picker).not.toContainText("ค้นหา ดูวิธีเล่น และเพิ่ม Exercise ลงใน Template");
+    await expect(picker).toHaveCSS("padding-left", "0px");
+    await expect(picker).toHaveCSS("padding-right", "0px");
+    await expect.poll(async () => picker.evaluate((dialog) => (
+      Array.from(dialog.querySelectorAll("*"))
+        .filter((element) => ["auto", "scroll"].includes(window.getComputedStyle(element).overflowY))
+        .length
+    ))).toBe(1);
+    await expect(pickerClose).toHaveCSS("width", "48px");
+    await expect(pickerClose).toHaveCSS("height", "48px");
+    await expect(pickerClose.locator("svg")).toHaveCSS("width", "24px");
+    await expect(pickerClose.locator("svg")).toHaveCSS("height", "24px");
+    await pickerClose.click();
+    await expect(picker).toBeHidden();
+    await expect(pickerTrigger).toBeFocused();
+
+    await pickerTrigger.click();
+    await page.keyboard.press("Escape");
+    await expect(picker).toBeHidden();
+    await expect(pickerTrigger).toBeFocused();
+
+    await pickerTrigger.click();
+    const viewport = page.viewportSize();
+    await page.mouse.click((viewport?.width ?? 390) - 4, 100);
+    await expect(picker).toBeHidden();
+
+    await pickerTrigger.click();
+    await picker.getByText("ดูวิธีเล่น", { exact: true }).click();
+    await expect(picker.getByText("เก็บสะบัก ลดบาร์อย่างควบคุม และดันกลับโดยไม่ยกไหล่")).toBeVisible();
+    await expect(picker.getByRole("link", { name: "ค้นหาวิดีโอสาธิต" })).toHaveAttribute(
+      "href",
+      "https://www.youtube.com/results?search_query=Barbell%20Bench%20Press%20exercise%20proper%20form%20tutorial",
+    );
+    await picker.getByRole("button", { name: "เพิ่ม", exact: true }).click();
+    await picker.getByRole("button", { name: "ปิด Library", exact: true }).click();
+    await page.getByLabel("Reps ต่ำสุด").fill("08");
+    await expect(page.getByLabel("Reps ต่ำสุด")).toHaveValue("8");
+    await page.getByLabel("พัก").fill("0180");
+    await expect(page.getByLabel("พัก")).toHaveValue("180");
+    await page.getByLabel("น้ำหนักเป้าหมาย").fill("00.5");
+    await expect(page.getByLabel("น้ำหนักเป้าหมาย")).toHaveValue("0.5");
+    await page.getByLabel("ค่า Effort").fill("00008");
+    await expect(page.getByLabel("ค่า Effort")).toHaveValue("8");
     await page.locator("form").evaluate((form) => (form as HTMLFormElement).requestSubmit());
     await expect(page).toHaveURL(/\/plans\/templates\/template-1$/);
 
     await page.goto("/plans");
+    await expect(page.getByText("ยังไม่มี Active Routine", { exact: true })).toHaveCount(1);
     await expect(page.getByRole("button", { name: "สร้าง Routine", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "สร้าง Routine", exact: true }).click();
     await expect(page.getByText("P-05 · ROUTINE EDITOR", { exact: true })).toBeVisible();
     await expect(page.getByText("ACTIVE ROUTINE", { exact: true })).toBeHidden();
+    await page.getByLabel("ชื่อ Routine").fill("A → B → C");
+    await page.getByRole("button", { name: "เพิ่มวัน", exact: true }).click();
+    const templateSelect = page.getByLabel("Template", { exact: true });
+    await expect(templateSelect.locator('option[value=""]')).toHaveCount(0);
+    await expect(templateSelect.locator('option[value="__create-template__"]')).toHaveText("+ เพิ่ม Template ใหม่");
+    await templateSelect.selectOption("__create-template__");
+    await expect(page).toHaveURL(/\/plans\/templates\/new$/);
+
+    await page.goto("/plans");
+    await page.getByRole("button", { name: "สร้าง Routine", exact: true }).click();
     await page.getByLabel("ชื่อ Routine").fill("A → B → C");
     await page.getByRole("button", { name: "เพิ่มวัน", exact: true }).click();
     await page.getByRole("button", { name: "บันทึก Routine", exact: true }).click();

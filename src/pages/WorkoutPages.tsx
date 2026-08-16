@@ -37,6 +37,7 @@ import {
 import { RestTimer } from "../features/workout/components/RestTimer";
 import { WorkoutSetRow } from "../features/workout/components/WorkoutSetRow";
 import { ExerciseFilterPopover } from "../features/exercises/components/ExerciseFilterPopover";
+import { ExerciseSelectionItem } from "../features/exercises/components/ExerciseSelectionItem";
 import {
     commandValues,
     defaultAddedSetDraft,
@@ -150,6 +151,7 @@ function ExercisePicker({
     onClose: () => void;
     readOnly: boolean;
 }) {
+    const closeButtonRef = useRef<HTMLButtonElement>(null);
     const [search, setSearch] = useState("");
     const [muscleFilter, setMuscleFilter] = useState<MuscleCode | "all">("all");
     const [equipmentFilter, setEquipmentFilter] = useState<
@@ -162,7 +164,7 @@ function ExercisePicker({
         status: "active",
     });
     return (
-        <ModalDialog open onClose={onClose} title="เพิ่มท่าออกกำลังกาย" description="เลือกท่าที่ active เพื่อเพิ่มลงใน Session" variant="sheet" className="flex h-[100dvh] max-h-[100dvh] max-w-2xl flex-col overflow-hidden p-0 tablet:h-[min(88dvh,760px)] tablet:max-h-[88dvh]" labelledBy="exercise-picker-title" titleClassName="sr-only">
+        <ModalDialog open onClose={onClose} initialFocusRef={closeButtonRef} title="เพิ่มท่าออกกำลังกาย" description="เลือกท่าที่ active เพื่อเพิ่มลงใน Session" variant="sheet" className="flex h-[100dvh] max-h-[100dvh] max-w-2xl flex-col overflow-hidden p-0 tablet:h-[min(88dvh,760px)] tablet:max-h-[88dvh]" labelledBy="exercise-picker-title" titleClassName="sr-only">
             <div className="contents">
                 <header className="sticky top-0 z-10 grid shrink-0 grid-cols-[minmax(0,1fr)_auto] gap-x-2 gap-y-2 border-b border-line bg-surface px-5 py-4 tablet:px-6 tablet:py-5 [&>div:first-child]:col-span-2 [&>label]:col-span-2 [&>input]:min-w-0 [&>div:last-child]:self-end [&_button_svg]:h-6 [&_button_svg]:w-6">
                     <div className="flex items-start justify-between gap-4">
@@ -174,6 +176,7 @@ function ExercisePicker({
                             <p className="mt-2 text-sm text-ink-muted">เลือกท่าจาก Exercise Library</p>
                         </div>
                         <Button
+                            ref={closeButtonRef}
                             variant="quiet"
                             className="h-12 w-12 shrink-0 px-0"
                             onClick={onClose}
@@ -213,20 +216,13 @@ function ExercisePicker({
                             </p>
                         ) : (
                             visible.map((exercise) => (
-                                <button
+                                <ExerciseSelectionItem
                                     key={exercise.id}
-                                    type="button"
-                                    disabled={readOnly}
-                                    className="flex min-h-16 w-full items-center justify-between gap-3 border-b border-line-subtle py-3 text-left text-sm hover:bg-interactive focus-visible:outline focus-visible:outline-2 focus-visible:outline-ink"
-                                    onClick={() => onSelect(exercise)}
-                                >
-                                    <span className="min-w-0 truncate font-semibold">
-                                        {exercise.name}
-                                    </span>
-                                    <span className="shrink-0 text-xs text-ink-muted">
-                                        {exercise.equipmentCode}
-                                    </span>
-                                </button>
+                                    exercise={exercise}
+                                    actionLabel="เพิ่ม"
+                                    actionDisabled={readOnly}
+                                    onAction={() => onSelect(exercise)}
+                                />
                             ))
                         )}
                     </div>
@@ -302,6 +298,8 @@ export function ActiveWorkoutPage() {
     const [currentExerciseId, setCurrentExerciseId] = useState<string | null>(
         null,
     );
+    const exerciseTitleRef = useRef<HTMLHeadingElement>(null);
+    const [exerciseAnnouncement, setExerciseAnnouncement] = useState("");
     const [expandedSetId, setExpandedSetId] = useState<string | null>(null);
     const [previousValues, setPreviousValues] = useState<
         Record<string, PreviousExerciseValues>
@@ -559,7 +557,33 @@ export function ActiveWorkoutPage() {
         currentExercise?.sets.find(
             (set) => set.id === expandedSetId && set.status === "PENDING",
         ) ?? currentExercise?.sets.find((set) => set.status === "PENDING");
+    const previousExercise = currentIndex > 0
+        ? session?.exercises[currentIndex - 1] ?? null
+        : null;
+    const nextExercise = currentIndex < (session?.exercises.length ?? 0) - 1
+        ? session?.exercises[currentIndex + 1] ?? null
+        : null;
     const remainingSeconds = remainingTimerSeconds(timer, clock);
+
+    function selectExercise(exerciseId: string) {
+        if (!session || busyAction) return;
+        const selectedIndex = session.exercises.findIndex(
+            (exercise) => exercise.id === exerciseId,
+        );
+        if (selectedIndex < 0) return;
+        const selected = session.exercises[selectedIndex];
+        setCurrentExerciseId(exerciseId);
+        setExpandedSetId(
+            selected.sets.find((set) => set.status === "PENDING")?.id ??
+                selected.sets[0]?.id ??
+                null,
+        );
+        setExerciseAnnouncement(
+            `ท่า ${selectedIndex + 1} จาก ${session.exercises.length}: ${selected.name}`,
+        );
+        persistCache(session, draftsRef.current, exerciseId, timer);
+        window.requestAnimationFrame(() => exerciseTitleRef.current?.focus());
+    }
     function updateDraft(
         setId: string,
         field: keyof SetDraftValue,
@@ -633,14 +657,19 @@ export function ActiveWorkoutPage() {
             setBusySetId(null);
         }
         if (next && set.status !== "COMPLETED") {
-            const nextTimer = timerAfterComplete(set.targetRestSeconds || 90);
-            setTimer(nextTimer);
-            persistCache(next, draftsRef.current, currentExerciseId, nextTimer);
-            const nextExercise = next.exercises.find(
+            const updatedExercise = next.exercises.find(
                 (exercise) => exercise.id === currentExerciseId,
             );
+            const hasPendingSet = updatedExercise?.sets.some(
+                (candidate) => candidate.status === "PENDING",
+            ) ?? false;
+            const nextTimer = hasPendingSet
+                ? timerAfterComplete(set.targetRestSeconds || 90)
+                : DEFAULT_TIMER;
+            setTimer(nextTimer);
+            persistCache(next, draftsRef.current, currentExerciseId, nextTimer);
             setExpandedSetId(
-                nextExercise?.sets.find((candidate) => candidate.status === "PENDING")
+                updatedExercise?.sets.find((candidate) => candidate.status === "PENDING")
                     ?.id ?? null,
             );
         }
@@ -946,17 +975,7 @@ export function ActiveWorkoutPage() {
                     <ExerciseIndex
                         session={session}
                         currentId={currentExercise?.id ?? null}
-                        onSelect={(exerciseId) => {
-                            const nextExercise = session.exercises.find(
-                                (exercise) => exercise.id === exerciseId,
-                            );
-                            setCurrentExerciseId(exerciseId);
-                            setExpandedSetId(
-                                nextExercise?.sets.find(
-                                    (set) => set.status === "PENDING",
-                                )?.id ?? nextExercise?.sets[0]?.id ?? null,
-                            );
-                        }}
+                        onSelect={selectExercise}
                     />
                 ) : null}
                 <section
@@ -968,7 +987,9 @@ export function ActiveWorkoutPage() {
                     </p>
                     <div className="mt-4 flex items-start justify-between gap-3">
                         <h1
+                            ref={exerciseTitleRef}
                             id="active-workout-title"
+                            tabIndex={-1}
                             className="text-[30px] font-bold leading-9 tracking-[-0.025em] tablet:text-h1"
                         >
                             {currentExercise?.name ??
@@ -1047,6 +1068,36 @@ export function ActiveWorkoutPage() {
                                 </p>
                             </div>
                         </section>
+                    ) : null}
+                    <p className="sr-only" aria-live="polite">{exerciseAnnouncement}</p>
+                    {currentExercise && session.exercises.length > 1 ? (
+                        <nav
+                            aria-label="เปลี่ยนท่าออกกำลังกาย"
+                            className="grid grid-cols-2 border-b border-line desktop:hidden"
+                        >
+                            <Button
+                                variant="quiet"
+                                className="min-h-12 justify-start border-r border-line-subtle px-3"
+                                disabled={!previousExercise || busyAction}
+                                onClick={() => {
+                                    if (previousExercise) selectExercise(previousExercise.id);
+                                }}
+                            >
+                                <Icon name="chevron-left" className="h-5 w-5" />
+                                ท่าก่อนหน้า
+                            </Button>
+                            <Button
+                                variant="quiet"
+                                className="min-h-12 justify-end px-3"
+                                disabled={!nextExercise || busyAction}
+                                onClick={() => {
+                                    if (nextExercise) selectExercise(nextExercise.id);
+                                }}
+                            >
+                                ท่าถัดไป
+                                <Icon name="chevron-right" className="h-5 w-5" />
+                            </Button>
+                        </nav>
                     ) : null}
                     {!currentExercise ? (
                         <EmptyState
@@ -1270,15 +1321,33 @@ export function ActiveWorkoutPage() {
                     variant="accent"
                     size="large"
                     fullWidth
-                    disabled={!canQueueSetMutation || busyAction || !pendingSet}
+                    disabled={
+                        !currentExercise ||
+                        busyAction ||
+                        (pendingSet
+                            ? !canQueueSetMutation
+                            : nextExercise
+                                ? false
+                                : !canQueueSetMutation)
+                    }
                     data-testid="primary-set-action"
                     onClick={() => {
-                        if (pendingSet) void saveSet(pendingSet);
+                        if (pendingSet) {
+                            void saveSet(pendingSet);
+                        } else if (nextExercise) {
+                            selectExercise(nextExercise.id);
+                        } else {
+                            void finish();
+                        }
                     }}
                 >
-                    {pendingSet
-                        ? "Complete Set"
-                        : "ทุกเซ็ตเสร็จแล้ว"}
+                    {!currentExercise
+                        ? "เพิ่ม Exercise เพื่อเริ่ม"
+                        : pendingSet
+                            ? "Complete Set"
+                            : nextExercise
+                                ? "ไปท่าถัดไป"
+                                : "Finish Workout"}
                 </Button>
             </div>
             {pickerOpen ? (

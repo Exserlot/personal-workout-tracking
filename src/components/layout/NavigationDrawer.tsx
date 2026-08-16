@@ -20,8 +20,8 @@ export function NavigationDrawer({ open, onClose, triggerRef }: NavigationDrawer
             <p className="font-bold tracking-[-0.02em]">FORM</p>
             <p className="text-[10px] font-semibold tracking-[0.08em] text-ink-muted">TRAINING SYSTEM</p>
           </div>
-          <Button variant="quiet" className="h-11 w-11 px-0" onClick={onClose} aria-label="ปิดเมนู">
-            <Icon name="close" />
+          <Button variant="quiet" className="h-12 w-12 !p-0" onClick={onClose} aria-label="ปิดเมนู">
+            <Icon name="close" className="h-6 w-6 shrink-0" />
           </Button>
         </div>
         <nav aria-label="เมนูทั้งหมด" className="py-4">

@@ -63,7 +63,7 @@ Application
 
 - **Goal:** ค้นหา เลือก และจัดการ Exercises
 - **Primary action:** Create Exercise
-- **Key content:** search, muscle/equipment filters, starter/custom indicator, archived filter
+- **Key content:** search, muscle/equipment filters, starter/custom indicator, archived filter, คำแนะนำวิธีเล่นแบบสั้น และ external tutorial search
 - **States:** loading, empty search, offline cached, error, success
 - **Related flows:** UF-02, UF-03
 
@@ -88,7 +88,7 @@ Application
 
 - **Goal:** ประกอบแบบฝึกและกำหนด targets
 - **Primary action:** Save Template
-- **Key content:** ordered Exercises, set count, rep range, RIR, rest, notes
+- **Key content:** ordered Exercises, Exercise how-to preview ก่อนเพิ่ม, set count, rep range, RIR, rest, notes
 - **States:** empty, dirty, validation error, archived-exercise warning, saved
 - **Related flows:** UF-03
 
@@ -96,8 +96,8 @@ Application
 
 - **Goal:** บันทึก session ด้วยความเร็วและความผิดพลาดต่ำ
 - **Primary action:** Complete Set; Finish เมื่อพร้อมจบ
-- **Secondary actions:** Add set/exercise, timer controls, session notes, exit
-- **Key content:** Exercise ปัจจุบัน, previous values, targets, SetLogs, rest timer, sync status
+- **Secondary actions:** Previous/next Exercise, Add set/exercise, timer controls, session notes, exit
+- **Key content:** Exercise ปัจจุบัน, previous values, targets, SetLogs, rest timer, sync status และ how-to preview ใน Exercise picker
 - **States:** active-synced, active-pending, offline, read-only locked, conflict, finishing
 - **Related flows:** UF-05–09
 
@@ -200,12 +200,13 @@ Breakpoints ต้องพิจารณาจาก content pressure ไม�
 4. Set rows พร้อม weight/reps/RIR และ set type
 5. Add Set และ Exercise notes
 6. Rest timer แบบ compact overlay/section เมื่อทำงาน
-7. Sticky Complete Set หรือ Finish action
+7. Sticky Complete Set, ไปท่าถัดไป หรือ Finish action ตามสถานะ
 
 Interaction rules:
 
 - เปิด numeric keyboard สำหรับ weight/reps
 - Complete Set ต้องไม่ต้องเปลี่ยนหน้า
+- เมื่อ Set ของท่าปัจจุบันครบ ให้ primary action ไปท่าถัดไปโดยไม่เปลี่ยนอัตโนมัติ; ท่าสุดท้ายเปลี่ยนเป็น Finish
 - Previous values เป็น suggestion ไม่ auto-commit
 - Offline/pending indicator ต้องมองเห็นแต่ไม่แย่ง primary action
 - Back/close ต้องเก็บ Session เป็น active ไม่ตีความว่า Finish

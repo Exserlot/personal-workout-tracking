@@ -90,9 +90,59 @@ function makeSession() {
   };
 }
 
+function makeSecondSessionExercise() {
+  return {
+    id: "session-exercise-2",
+    source_template_exercise_id: "template-exercise-2",
+    source_exercise_id: "exercise-row",
+    sequence_no: 2,
+    exercise_name_snapshot: "Barbell Bent-Over Row",
+    equipment_code_snapshot: "barbell",
+    notes: "",
+    workout_session_exercise_muscles: [{ role: "PRIMARY", sequence_no: 1, muscle_name_snapshot: "Back" }],
+    workout_session_sets: [{
+      id: "session-set-2",
+      source_template_set_id: "template-set-2",
+      sequence_no: 1,
+      set_kind_code: "WORKING",
+      is_to_failure: false,
+      target_reps_min: 8,
+      target_reps_max: 10,
+      target_weight_value: 50,
+      target_weight_unit: "KG",
+      target_weight_kg: 50,
+      target_effort_metric: "RPE",
+      target_effort_value: 8,
+      target_rest_seconds: 90,
+      actual_weight_value: null,
+      actual_weight_unit: null,
+      actual_weight_kg: null,
+      actual_reps: null,
+      actual_effort_metric: null,
+      actual_effort_value: null,
+      actual_rest_seconds: null,
+      status: "PENDING",
+      completed_at: null,
+      notes: "",
+    }],
+  };
+}
+
+function addSecondPendingSet(session: ReturnType<typeof makeSession>) {
+  const sets = session.workout_session_exercises[0].workout_session_sets;
+  sets.push({
+    ...sets[0],
+    id: "session-set-2",
+    source_template_set_id: "template-set-2",
+    sequence_no: 2,
+  });
+}
+
 test.describe("Active Workout set logging", () => {
+  let session: ReturnType<typeof makeSession>;
+
   test.beforeEach(async ({ page }) => {
-    const session = makeSession();
+    session = makeSession();
     await page.addInitScript(() => {
       window.localStorage.setItem("fitness-auth-token", JSON.stringify({
         access_token: "e2e-access-token",
@@ -140,7 +190,7 @@ test.describe("Active Workout set logging", () => {
         return;
       }
       if (resource === "exercises") {
-        await route.fulfill({ json: [{ id: "exercise-bench", name: "Barbell Bench Press", normalized_name: "barbell bench press", equipment_code: "barbell", notes: "", owner_user_id: null, archived_at: null, version: 1, primary_muscle: { code: "chest" }, exercise_secondary_muscles: [] }] });
+        await route.fulfill({ json: [{ id: "exercise-bench", name: "Barbell Bench Press", normalized_name: "barbell bench press", equipment_code: "barbell", notes: "เก็บสะบัก ลดบาร์อย่างควบคุม และดันกลับโดยไม่ยกไหล่", owner_user_id: null, archived_at: null, version: 1, primary_muscle: { code: "chest" }, exercise_secondary_muscles: [] }] });
         return;
       }
       await route.fulfill({ json: [] });
@@ -162,8 +212,16 @@ test.describe("Active Workout set logging", () => {
           await route.fulfill({ json: session.version });
           return;
         }
-        const sets = session.workout_session_exercises[0].workout_session_sets;
-        const set = sets.find((item) => item.id === String(command.set_id));
+        const sessionExercise = session.workout_session_exercises.find(
+          (exercise) => exercise.id === String(command.session_exercise_id),
+        ) ?? session.workout_session_exercises.find((exercise) =>
+          exercise.workout_session_sets.some((item) => item.id === String(command.set_id)),
+        );
+        const sets = sessionExercise?.workout_session_sets
+          ?? session.workout_session_exercises[0].workout_session_sets;
+        const set = session.workout_session_exercises
+          .flatMap((exercise) => exercise.workout_session_sets)
+          .find((item) => item.id === String(command.set_id));
         if (command.action === "complete_set" || command.action === "edit_set") {
           Object.assign(set, {
             actual_weight_value: command.actual_weight_value,
@@ -204,19 +262,19 @@ test.describe("Active Workout set logging", () => {
     await expect(page.getByTestId("active-workout")).toBeVisible();
   });
 
-  test("completes a decimal-weight set, starts rest, defaults a new set, and survives refresh", async ({ page }) => {
-    await page.locator('input[id="session-set-1-weight"]').fill("72.5");
-    await page.getByLabel("Reps เซ็ต 1").fill("8");
-    await page.getByLabel("Effort value เซ็ต 1").fill("8.5");
+  test("starts rest when another set remains and survives refresh", async ({ page }) => {
+    addSecondPendingSet(session);
+    await page.reload();
+    await page.locator('input[id="session-set-1-weight"]').fill("072.5");
+    await page.getByLabel("Reps เซ็ต 1").fill("08");
+    await page.getByLabel("Effort value เซ็ต 1").fill("08.5");
+    await expect(page.locator('input[id="session-set-1-weight"]')).toHaveValue("72.5");
+    await expect(page.getByLabel("Reps เซ็ต 1")).toHaveValue("8");
+    await expect(page.getByLabel("Effort value เซ็ต 1")).toHaveValue("8.5");
     await page.getByTestId("primary-set-action").click();
 
     await expect(page.getByTestId("set-row-session-set-1")).toContainText("เสร็จแล้ว");
     await expect(page.getByTestId("rest-timer")).toHaveText(/^01:[0-3][0-9]$/);
-
-    await page.getByTestId("add-set").click();
-    await expect(page.locator('input[aria-label="น้ำหนัก เซ็ต 2"]')).toHaveValue("72.5");
-    await expect(page.getByLabel("Reps เซ็ต 2")).toHaveValue("8");
-    await expect(page.getByLabel("Effort value เซ็ต 2")).toHaveValue("8.5");
 
     await page.getByTestId("set-row-session-set-1").locator('button[aria-controls="session-set-1-editor"]').click();
     await page.locator('input[id="session-set-1-weight"]').fill("73.5");
@@ -229,6 +287,8 @@ test.describe("Active Workout set logging", () => {
   });
 
   test("announces rest timer lifecycle transitions without announcing every second", async ({ page }) => {
+    addSecondPendingSet(session);
+    await page.reload();
     await page.getByTestId("primary-set-action").click();
     const timerRegion = page.getByRole("region", { name: "REST TIMER" });
     const announcement = timerRegion.getByRole("status");
@@ -344,7 +404,7 @@ test.describe("Active Workout set logging", () => {
     await page.route(idempotentRpcPattern, abortSync);
     await context.setOffline(true);
     page.once("dialog", (dialog) => void dialog.accept());
-    await page.getByRole("button", { name: "Finish Workout" }).click();
+    await page.getByTestId("primary-set-action").click();
     await expect(page).toHaveURL(/\/workout\/complete\//);
     await expect(page.getByText(/Offline · บันทึก Summary/)).toBeVisible();
     await expect.poll(() => syncQueueCount(page)).toBe(1);
@@ -378,6 +438,12 @@ test.describe("Active Workout set logging", () => {
     const picker = page.getByRole("dialog", { name: "เพิ่มท่าออกกำลังกาย" });
     const pickerBox = await picker.boundingBox();
     expect(pickerBox).toMatchObject({ x: 0, y: 0, width: 320, height: 800 });
+    await page.getByText("ดูวิธีเล่น", { exact: true }).click();
+    await expect(page.getByText("เก็บสะบัก ลดบาร์อย่างควบคุม และดันกลับโดยไม่ยกไหล่")).toBeVisible();
+    await expect(page.getByRole("link", { name: "ค้นหาวิดีโอสาธิต" })).toHaveAttribute(
+      "href",
+      "https://www.youtube.com/results?search_query=Barbell%20Bench%20Press%20exercise%20proper%20form%20tutorial",
+    );
     await page.getByLabel("เปิดตัวกรอง Exercise").click();
     const mobileFilters = page.getByRole("dialog", { name: "ตัวกรอง Exercise" });
     await expect(mobileFilters).toBeVisible();
@@ -385,6 +451,44 @@ test.describe("Active Workout set logging", () => {
     await expect(mobileFilters).toBeHidden();
     await expect(picker).toBeVisible();
     await page.getByLabel("ปิดตัวเลือกท่า").click();
+  });
+
+  test("moves from Complete Set to the next Exercise and persists the selected Exercise", async ({ page }) => {
+    session.workout_session_exercises.push(makeSecondSessionExercise());
+    await page.reload();
+
+    await expect(page.getByText("1 / 2", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "ท่าถัดไป", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Barbell Bent-Over Row" })).toBeFocused();
+    await expect(page.getByText("2 / 2", { exact: true })).toBeVisible();
+
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "Barbell Bent-Over Row" })).toBeVisible();
+    await page.getByRole("button", { name: "ท่าก่อนหน้า", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Barbell Bench Press" })).toBeFocused();
+
+    await page.getByTestId("primary-set-action").click();
+    await expect(page.getByTestId("primary-set-action")).toHaveText("ไปท่าถัดไป");
+    await expect(page.getByTestId("rest-timer")).toHaveText("พร้อม");
+    await page.getByTestId("primary-set-action").click();
+    await expect(page.getByRole("heading", { name: "Barbell Bent-Over Row" })).toBeFocused();
+
+    await page.locator('input[id="session-set-2-weight"]').fill("52.5");
+    await page.getByLabel("Reps เซ็ต 1").fill("8");
+    await page.getByLabel("Effort value เซ็ต 1").fill("8");
+    await page.getByTestId("primary-set-action").click();
+    await expect(page.getByTestId("primary-set-action")).toHaveText("Finish Workout");
+    await expect(page.getByTestId("rest-timer")).toHaveText("พร้อม");
+  });
+
+  test("allows read-only devices to inspect another Exercise", async ({ page }) => {
+    session.workout_session_exercises.push(makeSecondSessionExercise());
+    session.owner_device_id = "99999999-9999-4999-8999-999999999999";
+    await page.reload();
+
+    await expect(page.getByTestId("primary-set-action")).toBeDisabled();
+    await page.getByRole("button", { name: "ท่าถัดไป", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Barbell Bent-Over Row" })).toBeVisible();
   });
 
   test("keeps desktop set controls separated and within the workspace", async ({ page }) => {
@@ -465,5 +569,10 @@ test.describe("Active Workout set logging", () => {
     await expect(muscleOptions).toBeHidden();
     await expect(filters).toBeVisible();
     await expect(picker).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(filters).toBeHidden();
+    await expect(picker).toBeVisible();
+    await page.mouse.click(4, 4);
+    await expect(picker).toBeHidden();
   });
 });

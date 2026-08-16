@@ -65,6 +65,10 @@ export function ModalDialog({
       const openDialogs = Array.from(document.querySelectorAll<HTMLElement>("[data-modal-dialog]"));
       if (openDialogs.at(-1) !== dialogRef.current) return;
       if (event.key === "Escape") {
+        const nestedDialog = dialogRef.current?.querySelector<HTMLElement>(
+          "[role='dialog'], [role='alertdialog']",
+        );
+        if (nestedDialog) return;
         if (event.target instanceof Element && event.target.closest("[data-escape-boundary='true']")) return;
         event.preventDefault();
         onCloseRef.current();
@@ -105,11 +109,12 @@ export function ModalDialog({
     : variant === "sheet"
       ? "max-h-[100dvh] tablet:max-h-[92dvh]"
       : "max-h-[calc(100dvh-2rem)] tablet:max-h-[92dvh]";
+  const panelLayout = variant === "center" ? "overflow-y-auto p-6" : undefined;
   return (
     <div
-      className={cn("fixed inset-0 z-50 flex bg-black/70", overlayLayout)}
+      className={cn("fixed inset-0 z-[60] flex bg-black/70", overlayLayout)}
       role="presentation"
-      onMouseDown={(event) => {
+      onPointerDown={(event) => {
         if (closeOnBackdrop && event.target === event.currentTarget) onClose();
       }}
     >
@@ -120,7 +125,7 @@ export function ModalDialog({
         aria-modal="true"
         aria-labelledby={titleId}
         aria-describedby={descriptionId}
-        className={cn("safe-bottom overflow-y-auto border border-line bg-surface p-6 shadow-none", panelWidth, panelHeight, className)}
+        className={cn("safe-bottom border border-line bg-surface shadow-none", panelWidth, panelHeight, panelLayout, className)}
       >
         <h2 id={titleId} className={cn("text-h2 text-ink", titleClassName)}>{title}</h2>
         {description ? <p id={descriptionId} className="mt-3 text-sm leading-6 text-ink-secondary">{description}</p> : null}

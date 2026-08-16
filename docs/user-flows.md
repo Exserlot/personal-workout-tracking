@@ -111,7 +111,7 @@ stateDiagram-v2
 ### Happy path — Template
 
 1. ผู้ใช้สร้าง Template และกำหนดชื่อ
-2. เพิ่ม Exercises จาก Library
+2. เปิดดูคำแนะนำวิธีเล่นและลิงก์ค้นหาวิดีโอภายนอกได้ก่อนเพิ่ม Exercises จาก Library
 3. กำหนด target set count, rep range, target RIR, rest duration และ note
 4. เรียง Exercises แล้ว Save
 5. ระบบ validate และบันทึก Template
@@ -229,7 +229,9 @@ stateDiagram-v2
 - Offline: แสดง Pending/Offline แต่ logging ทำต่อได้
 - Server timeout: operation คงอยู่ใน queue และ retry ด้วย ID เดิม
 - ผู้ใช้แก้ SetLog ที่ pending: update operation ต้องอ้าง stable SetLog เดิม
+- เพิ่ม Exercise: ตัวเลือกท่าต้องเปิดดูคำแนะนำและลิงก์ค้นหาวิดีโอภายนอกได้ก่อนเพิ่ม โดยการเปิดรายละเอียดไม่เพิ่มท่าอัตโนมัติ
 - เพิ่ม/ลบ/เรียง Exercise: เปลี่ยนเฉพาะ Session snapshot
+- เมื่อท่าปัจจุบันไม่มี Set ที่ pending แล้ว primary action เปลี่ยนเป็นไปท่าถัดไป หรือ Finish Workout เมื่อเป็นท่าสุดท้าย; ผู้ใช้ยังเลือกท่าก่อนหน้า/ถัดไปได้โดยไม่เลื่อนอัตโนมัติ
 - Notification permission ถูกปฏิเสธ: ใช้ in-app timer โดยไม่รบกวน flow
 
 **State change:** Active Session revision เพิ่ม; pending queue เปลี่ยน  

@@ -67,6 +67,11 @@ test.describe("M-06 responsive quality gate", () => {
     await menu.press("Enter");
     const drawer = page.getByRole("dialog", { name: "เมนูทั้งหมด" });
     await expect(drawer).toBeVisible();
+    const closeMenu = drawer.getByRole("button", { name: "ปิดเมนู" });
+    await expect(closeMenu).toHaveCSS("width", "48px");
+    await expect(closeMenu).toHaveCSS("height", "48px");
+    await expect(closeMenu.locator("svg")).toHaveCSS("width", "24px");
+    await expect(closeMenu.locator("svg")).toHaveCSS("height", "24px");
     const drawerBox = await drawer.boundingBox();
     expect(drawerBox).toMatchObject({ x: 0, y: 0, height: 800 });
     await page.keyboard.press("Escape");

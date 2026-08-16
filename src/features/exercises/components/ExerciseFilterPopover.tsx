@@ -220,6 +220,8 @@ export function ExerciseFilterPopover({
     function handleDismiss(event: MouseEvent | KeyboardEvent) {
       if (event instanceof KeyboardEvent && event.key === "Escape") {
         if (event.target instanceof Element && event.target.closest("[data-escape-boundary='true']")) return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
         setOpen(false);
         return;
       }
@@ -232,10 +234,10 @@ export function ExerciseFilterPopover({
       }
     }
     document.addEventListener("mousedown", handleDismiss);
-    document.addEventListener("keydown", handleDismiss);
+    window.addEventListener("keydown", handleDismiss, true);
     return () => {
       document.removeEventListener("mousedown", handleDismiss);
-      document.removeEventListener("keydown", handleDismiss);
+      window.removeEventListener("keydown", handleDismiss, true);
     };
   }, [isTabletViewport, open]);
 

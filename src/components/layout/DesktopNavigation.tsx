@@ -2,7 +2,7 @@ import { NavLink } from "react-router-dom";
 import { primaryNavigation, utilityNavigation } from "../../app/navigation";
 import { cn } from "../../lib/cn";
 
-function RailLink({ index, label, to }: { index: string; label: string; to: string }) {
+function RailLink({ index, label, to, unreadCount = 0 }: { index: string; label: string; to: string; unreadCount?: number }) {
   return (
     <NavLink
       to={to}
@@ -18,11 +18,12 @@ function RailLink({ index, label, to }: { index: string; label: string; to: stri
     >
       <span className="text-[11px] tabular-nums text-ink-muted">{index}</span>
       <span className="hidden truncate font-semibold wide:block">{label}</span>
+      {unreadCount > 0 ? <span className="absolute right-2 top-2 min-w-5 rounded-full bg-accent px-1 text-center text-[10px] font-bold leading-5 text-canvas" aria-label={`${unreadCount} รายการยังไม่ได้อ่าน`}>{unreadCount > 99 ? "99+" : unreadCount}</span> : null}
     </NavLink>
   );
 }
 
-export function DesktopNavigation() {
+export function DesktopNavigation({ unreadCount = 0 }: { unreadCount?: number }) {
   return (
     <aside className="fixed inset-y-0 left-0 z-30 hidden w-[72px] flex-col border-r border-line bg-recessed desktop:flex wide:w-[216px]">
       <div className="flex h-24 items-center border-b border-line px-4 wide:px-6">
@@ -40,7 +41,7 @@ export function DesktopNavigation() {
       </nav>
       <div className="border-t border-line py-4">
         {utilityNavigation.map((item) => (
-          <RailLink key={item.to} {...item} />
+          <RailLink key={item.to} {...item} unreadCount={item.to === "/notifications" ? unreadCount : 0} />
         ))}
       </div>
     </aside>

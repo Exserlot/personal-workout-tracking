@@ -7,15 +7,15 @@ Exercise Library ใช้ Supabase Postgres, REST API และ Auth โดย 
 เปิด Docker Desktop ให้ engine ทำงาน แล้วรันจาก repository root:
 
 ```powershell
-pnpm exec supabase start
-pnpm exec supabase db reset
+npx supabase start
+npx supabase db reset
 ```
 
 หลังแก้ `supabase/config.toml` ให้ restart services หนึ่งครั้ง:
 
 ```powershell
-pnpm exec supabase stop
-pnpm exec supabase start
+npx supabase stop
+npx supabase start
 ```
 
 Local endpoints หลักคือ API `http://127.0.0.1:54321` และ Studio `http://127.0.0.1:54323`
@@ -26,7 +26,7 @@ Local endpoints หลักคือ API `http://127.0.0.1:54321` และ Stu
 
 ```dotenv
 VITE_SUPABASE_URL=http://127.0.0.1:54321
-VITE_SUPABASE_PUBLISHABLE_KEY=<publishable key จาก pnpm exec supabase status>
+VITE_SUPABASE_PUBLISHABLE_KEY=<publishable key จาก npx supabase status>
 ```
 
 อย่าใช้ค่าที่ระบุว่า `Secret` หรือ `service_role` กับตัวแปร `VITE_*`
@@ -45,7 +45,7 @@ Public signup ถูกปิดไว้ด้วย `auth.enable_signup = fals
 ## 4. Run and test the real flow
 
 ```powershell
-pnpm dev
+npm run dev
 ```
 
 เปิด `http://localhost:5173` แล้วตรวจตามลำดับ:
@@ -58,7 +58,7 @@ pnpm dev
 6. Archive รายการ แล้วตรวจด้วยตัวกรอง Archived
 7. ไปที่ Settings และออกจากระบบ; protected routes ต้องกลับไป Login
 
-รัน automated checks ด้วย `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm build` และ `pnpm test:e2e` เมื่อ dev server พร้อม
+รัน automated checks ด้วย `npm run typecheck`, `npm run lint`, `npm test`, `npm run build` และ `npm run test:e2e` เมื่อ dev server พร้อม
 
 ## Migration policy
 
@@ -67,9 +67,9 @@ pnpm dev
 Migrations `202608080003_planning.sql` through `202608080005_planning_constraint_names.sql` create the Template, Routine, ordered child tables and integrity constraints. Migrations `202608080006_starter_exercise_catalog.sql`, `202608080007_parallel_bar_dips.sql` and `202608160001_expand_starter_exercise_catalog.sql` build the reviewed 100-exercise starter catalog. After pulling them, apply pending migrations incrementally (or reset a disposable local database so all migrations and starter exercises are applied):
 
 ```powershell
-pnpm exec supabase db push --local
+npx supabase db push --local
 # For a disposable local database only:
-pnpm exec supabase db reset
+npx supabase db reset
 ```
 
 The browser only calls authenticated REST/RPC endpoints. Create a Template from **Plans → สร้าง Template**, add one or more Starter Exercises, save it, then create a Routine and add the saved Template as an ordered day. `Activate` must make that Routine the only active Routine; **Today** should then show its next Template. Empty Templates can be saved, but a Routine cannot be saved or activated until every referenced Template has at least one Exercise with a prescription.
@@ -83,9 +83,9 @@ Planning mutations are online-only in this slice. Active Workout snapshot, sessi
 Migrations `202608080006_starter_exercise_catalog.sql`, `202608080007_parallel_bar_dips.sql` and `202608160001_expand_starter_exercise_catalog.sql` expand the starter catalog to 100 unique exercises. The catalog represents all 10 controlled muscle groups and all 6 supported equipment types, with added emphasis on shoulders, hamstrings, glutes and calves. The migrations preserve existing starter UUIDs, keep starter rows ownerless, and replace secondary-muscle rows in sequence. Apply and validate them with:
 
 ```powershell
-pnpm exec supabase db push --local
-pnpm exec supabase db lint --local
-pnpm exec supabase test db
+npx supabase db push --local
+npx supabase db lint --local
+npx supabase test db
 ```
 
 The same catalog is included in `supabase/seed.sql` for fresh local databases. Stable IDs make the seed safe to rerun; conflicting starter names fail instead of overwriting another exercise, and unchanged metadata does not increment `version`.
@@ -99,9 +99,9 @@ set commands, finish, and discard. Migration
 while its session is running. Apply both with the normal local reset/push flow:
 
 ```powershell
-pnpm exec supabase db reset
-pnpm exec supabase db lint --local
-pnpm exec supabase test db
+npx supabase db reset
+npx supabase db lint --local
+npx supabase test db
 ```
 
 The browser registers a stable installation id before Start/Resume. The
@@ -114,7 +114,7 @@ device-local rest timer; it is not an offline mutation queue in M-03.
 To verify the flow, login with the local owner, activate a Routine, open Today,
 start its next Template, complete a set, refresh, and finish. A second browser
 installation can read the active snapshot but cannot mutate it. Template edits
-after Start must not change the session snapshot. Run `pnpm test:e2e` for the
+after Start must not change the session snapshot. Run `npm run test:e2e` for the
 mobile execution and refresh coverage.
 
 ### M-04 offline recovery
@@ -128,9 +128,9 @@ comparison, recovery archive export, and logout warnings. Apply and verify the
 complete local stack with:
 
 ```powershell
-pnpm exec supabase db reset
-pnpm exec supabase db lint --local
-pnpm exec supabase test db
+npx supabase db reset
+npx supabase db lint --local
+npx supabase test db
 ```
 
 Recovery JSON exports contain only local workout data and operation metadata;

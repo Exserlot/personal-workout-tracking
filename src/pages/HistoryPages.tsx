@@ -18,6 +18,7 @@ import { useProgressRepository } from "../features/progress/ProgressRepositoryCo
 import { SessionRecordList } from "../features/progress/components/SessionRecordList";
 import type { ProgressRecord } from "../features/progress/domain/progress";
 import { useProgressDisplayUnit } from "../features/progress/useProgressDisplayUnit";
+import { useRoutineTrackingRepository } from "../features/routine-tracking/RoutineTrackingRepositoryContext";
 import { readNumberInput } from "../lib/numberInput";
 
 function formatDate(value: string) {
@@ -249,6 +250,7 @@ function ExerciseEditor({ exercise, exerciseIndex, exerciseOptions, validationKe
 export function HistoryDetailPage() {
   const repository = useHistoryRepository();
   const progressRepository = useProgressRepository();
+  const routineTrackingRepository = useRoutineTrackingRepository();
   const auth = useAuth();
   const [progressUnit] = useProgressDisplayUnit(auth.session?.user.id ?? "");
   const exerciseRepository = useExerciseRepository();
@@ -383,7 +385,15 @@ export function HistoryDetailPage() {
   }
   async function remove() {
     if (!session || !canMutate || saving) return;
-    requestConfirmation({ title: "ลบ Session นี้ออกจาก History หรือไม่?", description: "Session จะไม่ถูกแสดงใน History และจะไม่ถูกนำไปคำนวณ Progress การกระทำนี้ย้อนกลับไม่ได้", confirmLabel: "ลบ Session", destructive: true, onConfirm: () => { void performRemove(); } });
+    setSaving(true); setError(null);
+    try {
+      const impact = await routineTrackingRepository.getSessionRemovalImpact(session.id);
+      const routineImpact = impact.affectsRoutineWeek
+        ? ` หลังลบ: Frequency ${impact.frequencyAfter}/${impact.frequencyTarget}, Coverage ${impact.coverageAfter}/${impact.coverageTarget}${impact.missingDayLabelsAfter?.length ? ` และจะขาด ${impact.missingDayLabelsAfter.join(", ")}` : ""} ในสัปดาห์ ${impact.weekStart}`
+        : " Session นี้ไม่ได้มาจาก Routine จึงไม่กระทบ Weekly Routine History";
+      requestConfirmation({ title: "ลบ Session นี้ออกจาก History หรือไม่?", description: `Session จะไม่ถูกแสดงใน History และ Progress${routineImpact} การลบจะคำนวณ Routine Week ใหม่ทันที แต่ไม่สร้าง Notification ย้อนหลัง`, confirmLabel: "ลบ Session", destructive: true, onConfirm: () => { void performRemove(); } });
+    } catch (reason) { setError(reason); }
+    finally { setSaving(false); }
   }
 
   function reloadAfterConflict() {

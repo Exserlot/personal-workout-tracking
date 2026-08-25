@@ -17,5 +17,6 @@ export const primaryNavigation: NavigationItem[] = [
 ];
 
 export const utilityNavigation: NavigationItem[] = [
-  { index: "06", label: "ตั้งค่าและการซิงก์", shortLabel: "ตั้งค่า", to: "/settings", icon: "settings" },
+  { index: "06", label: "การแจ้งเตือน", shortLabel: "แจ้งเตือน", to: "/notifications", icon: "notifications" },
+  { index: "07", label: "ตั้งค่าและการซิงก์", shortLabel: "ตั้งค่า", to: "/settings", icon: "settings" },
 ];

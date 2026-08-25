@@ -1,7 +1,7 @@
 # Personal Workout Tracking Web App — Design System
 
 **Status:** MVP design contract  
-**Applies to:** P-01–P-13 across desktop, tablet and mobile  
+**Applies to:** P-01–P-15 across desktop, tablet and mobile
 **Related documents:** [Product Requirements](product-requirements.md) · [User Flows](user-flows.md) · [Information Architecture](information-architecture.md) · [Development Roadmap](development-roadmap.md)  
 **Visual reference:** [Swiss fitness dashboard](references/swiss-fitness-dashboard.png)
 
@@ -25,7 +25,7 @@
 | --- | --- | --- |
 | Preserve | high contrast, strong headings, hairline dividers, tabular numbers, modular data, focused mobile workout | ใช้เป็น grammar หลักของระบบ |
 | Evolve | card-heavy framing, tiny uppercase labels, small mobile rows, red repeated across surfaces | ลดกรอบซ้ำ เพิ่มขนาดอ่าน/สัมผัส และจำกัด red budget |
-| Replace | Calendar, calories, body metrics, cardio และ decorative anatomy imagery | ใช้ Today, Routine sequence, strength sets, sync state และ exercise progress ตาม MVP |
+| Replace | Calendar, calories, body metrics, cardio และ decorative anatomy imagery | ใช้ Today, flexible Routine choices, Weekly Frequency/Coverage, strength sets, sync state และ exercise progress ตาม MVP |
 | Reject | gradient, glassmorphism, neon glow และ decorative depth | ไม่อนุญาตในระบบนี้ |
 
 ## 2. Design principles
@@ -321,6 +321,7 @@ Border rules:
 - Persistent left rail `216 px`; compact `72 px` ที่ desktop แคบ
 - Logo/product name ด้านบน; Today, Plans, Exercises, History, Progress เป็น primary items
 - Settings และ sync status อยู่ท้าย rail
+- Notification Center ใช้ utility trigger ใน shell พร้อม unread count; ไม่เพิ่มเป็น primary rail item
 - Active item ใช้ white label + red `2 px` leading rule และ position cue; ไม่ใช้ red-filled row
 - Rail ไม่ scroll พร้อม main content เมื่อ viewport สูงพอ
 
@@ -329,12 +330,14 @@ Border rules:
 - Landscape ใช้ compact/collapsible rail; portrait ใช้ top bar + drawer
 - Drawer ปิดด้วย Escape, outside click และคืน focus ให้ trigger
 - Current page title อยู่ใน top bar เพื่อรักษา orientation เมื่อ rail ถูกซ่อน
+- Notification trigger อยู่ใน top bar และเปิด drawer/full pane โดยคืน focus ให้ trigger เมื่อปิด
 
 ### Mobile
 
 - Bottom navigation: Today, Plans, History, Progress และ More
 - Target แต่ละรายการอย่างน้อย `48 px` สูง; icon + text label เสมอ
 - Exercises และ Settings อยู่ใน More หรือ contextual entry ตาม IA
+- Notification Center ใช้ top-bar trigger แยกจาก bottom navigation และมี accessible unread label
 - Active Workout ซ่อน global navigation และใช้ close/back, position `02 / 06`, overflow และ sticky action ภายใน workflow
 - Bottom navigation/sticky action ต้องไม่ทับเนื้อหาเมื่อ zoom, soft keyboard หรือ safe-area inset เปลี่ยน
 
@@ -344,6 +347,15 @@ Border rules:
 - Deep detail มี breadcrumb บน desktop; mobile ใช้ back title pattern
 - ห้ามใช้ hover-only submenu
 - Reorder interactions ต้องมี move up/down keyboard and touch alternatives
+
+### Notification Center
+
+- Desktop ใช้ utility panel หรือ feed page; tablet/mobile ใช้ full pane โดยคง page title และ back behavior
+- Notification แต่ละรายการเป็น feed row มีช่วง Routine Week, Frequency/Coverage และ Routine Days ที่ขาด ไม่ใช้ card shadow แยกทุกแถว
+- Unread ใช้ weight/leading marker พร้อมข้อความที่ screen reader เข้าใจ ไม่พึ่ง accent dot อย่างเดียว
+- การเปิดรายการ mark read และนำไป Weekly Routine History; Dismiss เป็น secondary action แยกและไม่เท่ากับลบประวัติ
+- มี action `ดูประวัติ Routine ทั้งหมด` ที่มองเห็นได้โดยไม่ต้อง dismiss notifications ก่อน
+- หลายสัปดาห์ต้องแสดงเป็นหลาย rows ตามลำดับใหม่ไปเก่า พร้อม keyboard focus และ touch target อย่างน้อย `44 × 44 px`
 
 ## 11. Table and set-grid patterns
 
@@ -440,6 +452,7 @@ Border rules:
 
 - Disabled control ต้องมีเหตุผลใน helper/tooltip เมื่อไม่ชัดจากบริบท
 - Destructive confirmation ระบุ object และผลกระทบต่อ History/Progress
+- การแก้หรือลบ Session ที่กระทบ Frequency/Coverage ต้องระบุ Routine Week และผลที่จะคำนวณใหม่ โดยไม่สร้าง Notification Center item ใหม่จาก action นี้
 - Safe action อยู่ก่อน destructive action ทั้งใน focus order และ visual hierarchy
 
 ## 14. Desktop, tablet and mobile behavior
@@ -461,6 +474,8 @@ Border rules:
 | Plans | library + template canvas; keyboard reorder | selector drawer + editor | step-based sections and move controls |
 | Active Workout | Exercise index + set workspace + timer/context | main workspace + compact index/timer | full-screen single Exercise, sticky Complete Set |
 | History | sortable table + detail pane | list then detail | labeled session rows; no squeezed desktop table |
+| Notification Center | utility panel/feed rows | drawer/full pane | full-page feed with read/dismiss actions |
+| Weekly Routine History | weekly table + detail pane | week list then detail | summary rows with pushed week detail |
 | Progress | paired charts and metric rail | one/two charts per row | one metric/chart per section with accessible summary |
 | Modal/confirm | centered modal max-width | modal or side sheet | bottom sheet/full-screen confirm; safe-area aware |
 

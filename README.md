@@ -38,7 +38,7 @@ The complete owner flow is implemented through Exercise Library, Planning, Today
 - TypeScript
 - Vite
 - Tailwind CSS
-- pnpm
+- npm
 - Supabase REST API (browser-safe publishable/anon key only)
 - Vite PWA / Workbox application-shell precache
 - Vercel deployment workflows
@@ -47,14 +47,14 @@ The complete owner flow is implemented through Exercise Library, Planning, Today
 ## Development
 
 ```bash
-pnpm install
-pnpm dev
-pnpm typecheck
-pnpm lint
-pnpm test
-pnpm build
-pnpm check:bundle
-pnpm test:pwa
+npm install
+npm run dev
+npm run typecheck
+npm run lint
+npm test
+npm run build
+npm run check:bundle
+npm run test:pwa
 ```
 
 For local database setup, see [docs/supabase-local-setup.md](docs/supabase-local-setup.md).
@@ -69,17 +69,17 @@ Hosted environment and release preparation:
 
 ## Local Supabase Initial Setup
 
-The application connects to a local Supabase stack through its browser-safe publishable key. Docker Desktop (Linux containers) and Node.js with pnpm are required.
+The application connects to a local Supabase stack through its browser-safe publishable key. Docker Desktop (Linux containers), Node.js, and npm are required.
 
 ### First run
 
 Run these commands from the repository root:
 
 ```powershell
-pnpm install
-pnpm exec supabase start
-pnpm exec supabase status
-pnpm exec supabase db reset
+npm install
+npx supabase start
+npx supabase status
+npx supabase db reset
 ```
 
 `supabase db reset` recreates the local database, applies every migration, and runs `supabase/seed.sql`. It is destructive to local data, so use it only when resetting the disposable local environment is intentional.
@@ -90,7 +90,7 @@ The important local endpoints are:
 - Studio: `http://127.0.0.1:54323`
 - Email preview: `http://127.0.0.1:54324`
 
-Copy the publishable key shown by `pnpm exec supabase status` into a new `.env.local` file:
+Copy the publishable key shown by `npx supabase status` into a new `.env.local` file:
 
 ```dotenv
 VITE_APP_ENV=local
@@ -109,7 +109,7 @@ Because public registration is disabled, create the single development owner in 
 1. Open `http://127.0.0.1:54323`.
 2. Go to **Authentication > Users > Add user**.
 3. Enter an email and password, then enable **Auto Confirm User**.
-4. Start the app with `pnpm dev` and open `http://localhost:5173`.
+4. Start the app with `npm run dev` and open `http://localhost:5173`.
 5. Sign in with that owner account.
 
 The owner can now verify the seeded Exercise Library, create a Custom Exercise, edit it, archive it, and create a Workout Template/Routine. Starter Exercises are read-only.
@@ -117,33 +117,33 @@ The owner can now verify the seeded Exercise Library, create a Custom Exercise, 
 ### Daily local workflow
 
 ```powershell
-pnpm exec supabase start       # start Docker services
-pnpm exec supabase status      # inspect URLs and keys
-pnpm dev                       # start Vite
+npx supabase start       # start Docker services
+npx supabase status      # inspect URLs and keys
+npm run dev              # start Vite
 ```
 
 Stop the stack when finished:
 
 ```powershell
-pnpm exec supabase stop
+npx supabase stop
 ```
 
-Apply pending migrations without clearing data with `pnpm exec supabase db push --local`. Use `pnpm exec supabase db reset` when you intentionally want a clean database and fresh seed data.
+Apply pending migrations without clearing data with `npx supabase db push --local`. Use `npx supabase db reset` when you intentionally want a clean database and fresh seed data.
 
 ### Validation and database tests
 
 With Docker and the local stack running, use:
 
 ```powershell
-pnpm typecheck
-pnpm lint
-pnpm test
-pnpm build
-pnpm check:bundle
-pnpm exec supabase db lint --local
-pnpm exec supabase test db
-pnpm test:e2e
-pnpm test:pwa
+npm run typecheck
+npm run lint
+npm test
+npm run build
+npm run check:bundle
+npx supabase db lint --local
+npx supabase test db
+npm run test:e2e
+npm run test:pwa
 ```
 
 The Playwright suite expects the Vite app and local Supabase services to be available.
@@ -151,6 +151,6 @@ The Playwright suite expects the Vite app and local Supabase services to be avai
 ### Troubleshooting
 
 - `docker: command not found` or `dockerDesktopLinuxEngine` errors: start Docker Desktop and switch to the Linux container engine before running `supabase start`.
-- `401 Unauthorized` or `permission denied for table`: confirm the URL and **Publishable** key from `supabase status`, then rerun migrations with `pnpm exec supabase db push --local` or reset the local database.
-- `email_provider_disabled`: confirm `[auth.email] enable_signup = true` in `supabase/config.toml`, then run `pnpm exec supabase stop` and `pnpm exec supabase start`. Global public signup remains disabled intentionally.
-- PowerShell blocks `pnpm`: use `pnpm.cmd` in the same commands, for example `pnpm.cmd exec supabase status`.
+- `401 Unauthorized` or `permission denied for table`: confirm the URL and **Publishable** key from `supabase status`, then rerun migrations with `npx supabase db push --local` or reset the local database.
+- `email_provider_disabled`: confirm `[auth.email] enable_signup = true` in `supabase/config.toml`, then run `npx supabase stop` and `npx supabase start`. Global public signup remains disabled intentionally.
+- PowerShell blocks `npm` or `npx`: use `npm.cmd` or `npx.cmd` in the same commands, for example `npx.cmd supabase status`.

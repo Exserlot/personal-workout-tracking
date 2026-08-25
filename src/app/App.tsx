@@ -15,6 +15,8 @@ import { HistoryRepositoryProvider } from "../features/history/HistoryRepository
 import { createSupabaseHistoryRepository } from "../features/history/data/SupabaseHistoryRepository";
 import { ProgressRepositoryProvider } from "../features/progress/ProgressRepositoryProvider";
 import { createSupabaseProgressRepository } from "../features/progress/data/SupabaseProgressRepository";
+import { RoutineTrackingRepositoryProvider } from "../features/routine-tracking/RoutineTrackingRepositoryProvider";
+import { createSupabaseRoutineTrackingRepository } from "../features/routine-tracking/data/SupabaseRoutineTrackingRepository";
 
 const LoginPage = lazy(() => import("../pages/LoginPage").then((module) => ({ default: module.LoginPage })));
 const TodayPage = lazy(() => import("../pages/TodayPage").then((module) => ({ default: module.TodayPage })));
@@ -29,6 +31,9 @@ const HistoryDetailPage = lazy(() => import("../pages/HistoryPages").then((modul
 const ProgressPage = lazy(() => import("../pages/ProgressPages").then((module) => ({ default: module.ProgressPage })));
 const ExerciseProgressPage = lazy(() => import("../pages/ProgressPages").then((module) => ({ default: module.ExerciseProgressPage })));
 const SettingsPage = lazy(() => import("../pages/SettingsPage").then((module) => ({ default: module.SettingsPage })));
+const NotificationsPage = lazy(() => import("../pages/RoutineTrackingPages").then((module) => ({ default: module.NotificationsPage })));
+const RoutineHistoryPage = lazy(() => import("../pages/RoutineTrackingPages").then((module) => ({ default: module.RoutineHistoryPage })));
+const RoutineWeekDetailPage = lazy(() => import("../pages/RoutineTrackingPages").then((module) => ({ default: module.RoutineWeekDetailPage })));
 const NotFoundPage = lazy(() => import("../pages/NotFoundPage").then((module) => ({ default: module.NotFoundPage })));
 
 const exerciseRepository = createSupabaseExerciseRepository();
@@ -36,6 +41,7 @@ const planningRepository = createSupabasePlanningRepository();
 const workoutRepository = createSupabaseWorkoutRepository();
 const historyRepository = createSupabaseHistoryRepository();
 const progressRepository = createSupabaseProgressRepository();
+const routineTrackingRepository = createSupabaseRoutineTrackingRepository();
 
 function RouteLoading() {
   return (
@@ -53,6 +59,7 @@ export function App() {
     <AuthProvider>
       <ExerciseRepositoryProvider repository={exerciseRepository}>
         <PlanningRepositoryProvider repository={planningRepository}>
+          <RoutineTrackingRepositoryProvider repository={routineTrackingRepository}>
           <WorkoutRepositoryProvider repository={workoutRepository}>
           <WorkoutSyncProvider>
           <HistoryRepositoryProvider repository={historyRepository}>
@@ -76,6 +83,9 @@ export function App() {
                   <Route path="progress" element={<ProgressPage />} />
                   <Route path="progress/:exerciseId" element={<ExerciseProgressPage />} />
                   <Route path="settings" element={<SettingsPage />} />
+                  <Route path="notifications" element={<NotificationsPage />} />
+                  <Route path="routine-history" element={<RoutineHistoryPage />} />
+                  <Route path="routine-history/:weekPlanId" element={<RoutineWeekDetailPage />} />
                   <Route path="*" element={<NotFoundPage />} />
                 </Route>
               </Route>
@@ -86,6 +96,7 @@ export function App() {
           </HistoryRepositoryProvider>
           </WorkoutSyncProvider>
           </WorkoutRepositoryProvider>
+          </RoutineTrackingRepositoryProvider>
         </PlanningRepositoryProvider>
       </ExerciseRepositoryProvider>
     </AuthProvider>

@@ -22,19 +22,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 11.16.0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm exec playwright install --with-deps chromium firefox webkit
-      - run: pnpm exec supabase start
-      - run: pnpm exec supabase db reset
-      - run: pnpm exec supabase db lint --local
-      - run: pnpm exec supabase test db
-      - run: pnpm quality
-      - run: pnpm test:e2e
-      - run: pnpm test:pwa
+          cache: npm
+      - run: npm ci
+      - run: npx --no-install playwright install --with-deps chromium firefox webkit
+      - run: npx --no-install supabase start
+      - run: npx --no-install supabase db reset
+      - run: npx --no-install supabase db lint --local
+      - run: npx --no-install supabase db advisors --local --type all --level warn --fail-on warn
+      - run: npx --no-install supabase test db
+      - run: npm run quality
+      - run: npm run test:e2e
+      - run: npm run test:pwa

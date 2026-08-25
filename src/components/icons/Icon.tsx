@@ -1,6 +1,7 @@
 import {
   Archive,
   ArrowRight,
+  Bell,
   CalendarDays,
   Check,
   ChevronDown,
@@ -51,7 +52,8 @@ export type IconName =
   | "plus"
   | "refresh"
   | "search"
-  | "trash";
+  | "trash"
+  | "notifications";
 
 const icons: Record<IconName, LucideIcon> = {
   today: CalendarDays,
@@ -78,6 +80,7 @@ const icons: Record<IconName, LucideIcon> = {
   refresh: RefreshCw,
   search: Search,
   trash: Trash2,
+  notifications: Bell,
 };
 
 interface IconProps extends SVGProps<SVGSVGElement> {

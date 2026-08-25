@@ -194,13 +194,3 @@ export async function saveSessionCache(cache: ActiveSessionCache): Promise<void>
     transaction.onerror = () => { database.close(); reject(transaction.error ?? new Error("Could not save workout cache")); };
   });
 }
-
-export async function clearSessionCache(sessionId: string) {
-  const database = await openWorkoutDatabase();
-  return new Promise<void>((resolve, reject) => {
-    const transaction = database.transaction(WORKOUT_CACHE_STORE_NAME, "readwrite");
-    transaction.objectStore(WORKOUT_CACHE_STORE_NAME).delete(sessionId);
-    transaction.oncomplete = () => { database.close(); resolve(); };
-    transaction.onerror = () => { database.close(); reject(transaction.error ?? new Error("Could not clear workout cache")); };
-  });
-}

@@ -32,6 +32,8 @@ export const WORKOUT_SESSION_SELECT = [
   "source_type",
   "source_routine_id",
   "source_routine_day_id",
+  "source_routine_week_plan_id",
+  "source_routine_week_plan_day_id",
   "source_template_id",
   "source_routine_revision",
   "source_template_revision",
@@ -167,6 +169,8 @@ export function parseWorkoutSession(value: unknown): WorkoutSession {
     sourceType,
     sourceRoutineId: stringValue(row.source_routine_id, "source_routine_id", true),
     sourceRoutineDayId: stringValue(row.source_routine_day_id, "source_routine_day_id", true),
+    sourceRoutineWeekPlanId: stringValue(row.source_routine_week_plan_id, "source_routine_week_plan_id", true),
+    sourceRoutineWeekPlanDayId: stringValue(row.source_routine_week_plan_day_id, "source_routine_week_plan_day_id", true),
     sourceTemplateId: stringValue(row.source_template_id, "source_template_id", true),
     sourceRoutineRevision: integer(row.source_routine_revision, "source_routine_revision", 1, true),
     sourceTemplateRevision: integer(row.source_template_revision, "source_template_revision", 1, true),
@@ -374,7 +378,7 @@ export class SupabaseWorkoutRepository implements WorkoutRepository {
 
   async startPlanned(input: StartPlannedInput): Promise<WorkoutSession> {
     try {
-      const id = rpcId(await this.client.request<unknown>({ method: "POST", path: "rpc/workout_start_planned", body: { p_session_id: input.sessionId, p_device_id: input.deviceId, p_expected_routine_id: input.routineId, p_expected_routine_revision: input.routineRevision, p_expected_template_revision: input.templateRevision } }));
+      const id = rpcId(await this.client.request<unknown>({ method: "POST", path: "rpc/workout_start_planned", body: { p_session_id: input.sessionId, p_device_id: input.deviceId, p_week_plan_id: input.routineWeekPlanId, p_week_plan_day_id: input.routineWeekPlanDayId, p_expected_template_revision: input.templateRevision } }));
       const session = await this.getSessionById(id);
       if (!session) throw new WorkoutRepositoryError("unknown", "สร้าง Workout Session แล้วแต่โหลด snapshot ไม่สำเร็จ");
       return session;

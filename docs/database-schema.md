@@ -128,9 +128,7 @@ Set count is `count(template_set_prescriptions)`; no duplicated `set_count` colu
 | `id` | UUID | PK |
 | `user_id` | UUID | FK users; required |
 | `name` | varchar | required |
-| `weekly_frequency_target` | smallint | 1–7 |
-| `next_workout_index` | integer | zero-based and within current day count |
-| `is_active` | boolean | at most one true per User |
+| `weekly_frequency_target` | smallint | 1–7; application default equals RoutineDay count but remains editable |
 | `revision` | integer | required; increment on child mutation |
 | `archived_at` | timestamptz | nullable |
 
@@ -141,11 +139,73 @@ Set count is `count(template_set_prescriptions)`; no duplicated `set_count` colu
 | `id` | UUID | PK |
 | `routine_id` | UUID | FK routines; required |
 | `template_id` | UUID | FK workout_templates; required |
-| `sequence_no` | integer | positive; unique per Routine |
+| `display_order` | integer | positive; unique per Routine; presentation only, not execution sequence |
 | `label` | varchar | optional day label override |
 | `notes` | text | nullable |
 
-Recommended partial unique index: one `routines(user_id)` where `is_active = true AND archived_at IS NULL`.
+### `routine_activations`
+
+| Column | Suggested type | Rules |
+| --- | --- | --- |
+| `id` | UUID | PK |
+| `user_id` | UUID | FK users; required |
+| `routine_id` | UUID | FK routines; required |
+| `effective_week_start` | date | required Monday in the user's timezone at scheduling time |
+| `created_at` | timestamptz | required |
+| `cancelled_at` | timestamptz | nullable before the activation becomes locked by a Session |
+
+Only one non-cancelled activation may take effect for a User at the same `effective_week_start`. The effective Routine for a week is the latest non-cancelled activation at or before that week; a new activation supersedes the prior Routine from its effective week onward.
+
+### `routine_week_plans`
+
+| Column | Suggested type | Rules |
+| --- | --- | --- |
+| `id` | UUID | PK |
+| `user_id` | UUID | FK users; required |
+| `routine_id` | UUID | nullable provenance FK; snapshot remains if source is archived |
+| `routine_activation_id` | UUID | nullable FK routine_activations |
+| `week_start_date` | date | required Monday in `timezone_snapshot` |
+| `week_end_date` | date | required Sunday; exactly six days after start |
+| `timezone_snapshot` | varchar | required IANA timezone |
+| `routine_name_snapshot` | varchar | required |
+| `routine_revision_snapshot` | integer | required |
+| `frequency_target_snapshot` | smallint | 1–7 |
+| `status` | varchar | `OPEN`, `PROVISIONAL`, `FINALIZED` |
+| `locked_at` | timestamptz | nullable until first Routine Session starts |
+| `finalized_at` | timestamptz | nullable; required for FINALIZED |
+| `created_at` | timestamptz | required |
+
+Unique `(user_id, week_start_date)`. A row must exist for every effective Routine Week, including a week with zero Sessions.
+
+### `routine_week_plan_days`
+
+| Column | Suggested type | Rules |
+| --- | --- | --- |
+| `id` | UUID | PK |
+| `routine_week_plan_id` | UUID | FK routine_week_plans; required |
+| `source_routine_day_id` | UUID | nullable provenance FK |
+| `source_template_id` | UUID | nullable provenance FK |
+| `source_template_revision` | integer | required |
+| `day_label_snapshot` | varchar | required |
+| `template_name_snapshot` | varchar | required |
+| `display_order` | integer | positive; unique per weekly plan |
+
+Coverage denominator is the count of these rows. Coverage identity uses this row/RoutineDay identity, not Template identity.
+
+### `weekly_routine_notifications`
+
+| Column | Suggested type | Rules |
+| --- | --- | --- |
+| `id` | UUID | PK |
+| `user_id` | UUID | FK users; required |
+| `routine_week_plan_id` | UUID | FK routine_week_plans; unique; required |
+| `title_snapshot` | varchar | required |
+| `body_snapshot` | text | required; concise finalized Frequency/Coverage result |
+| `created_at` | timestamptz | required |
+| `read_at` | timestamptz | nullable |
+| `dismissed_at` | timestamptz | nullable |
+
+Notification rows are created only when a Routine Week first finalizes incomplete. Retrospective user-initiated edits/deletes recompute Weekly Routine History but do not insert a new notification.
 
 ## 5. Workout Execution and snapshot schema
 
@@ -159,6 +219,8 @@ Recommended partial unique index: one `routines(user_id)` where `is_active = tru
 | `source_type` | varchar | `PLANNED` or `AD_HOC` |
 | `source_routine_id` | UUID | nullable provenance FK |
 | `source_routine_day_id` | UUID | nullable provenance FK |
+| `source_routine_week_plan_id` | UUID | nullable FK; required for Routine Session |
+| `source_routine_week_plan_day_id` | UUID | nullable FK; required for Routine Session |
 | `source_template_id` | UUID | nullable provenance FK |
 | `source_routine_revision` | integer | nullable copied revision |
 | `source_template_revision` | integer | nullable copied revision |
@@ -268,7 +330,11 @@ Hard deletion of completed Session data is an administrative retention operation
 - `workout_templates(user_id, archived_at, updated_at desc)`
 - `template_exercises(template_id, sequence_no)` unique
 - `template_set_prescriptions(template_exercise_id, sequence_no)` unique
-- `routine_days(routine_id, sequence_no)` unique
+- `routine_days(routine_id, display_order)` unique
+- `routine_activations(user_id, effective_week_start)` unique where not cancelled
+- `routine_week_plans(user_id, week_start_date)` unique
+- `routine_week_plan_days(routine_week_plan_id, display_order)` unique
+- `weekly_routine_notifications(user_id, created_at desc)` excluding dismissed rows for default feed
 - `workout_sessions(user_id, started_at desc)` excluding soft-deleted rows for History
 - `workout_sessions(user_id, status)` for Today/Active Session resolution
 - `workout_session_exercises(session_id, sequence_no)` unique
@@ -284,13 +350,14 @@ Do not add analytics indexes speculatively; validate them against real query pla
 Start Workout must execute as one logical transaction:
 
 1. Lock or consistently read User’s active-session state
-2. Resolve RoutineDay and Template at expected revisions
-3. Validate that all referenced Exercises/Sets are usable
-4. Insert WorkoutSession with snapshot headers
-5. Copy ordered SessionExercises, muscle snapshots and SessionSets
-6. Set owner device and ACTIVE status
-7. Record idempotency receipt
-8. Commit; otherwise roll back every inserted row
+2. Resolve or materialize the current RoutineWeekPlan and selected RoutineWeekPlanDay
+3. Lock the weekly plan on the first Routine Session and validate Routine/Template revisions
+4. Validate that all referenced Exercises/Sets are usable
+5. Insert WorkoutSession with weekly-plan and Template snapshot headers
+6. Copy ordered SessionExercises, muscle snapshots and SessionSets
+7. Set owner device and ACTIVE status
+8. Record idempotency receipt
+9. Commit; otherwise roll back every inserted row
 
 No caller may observe an ACTIVE Session with missing snapshot children.
 
@@ -305,6 +372,8 @@ No caller may observe an ACTIVE Session with missing snapshot children.
 | Convert weight at query vs write | preserve input + canonical kg at write | fast stable metrics; paired values can diverge if write path is bypassed |
 | Full event sourcing vs current state | current state + version/edit marker | MVP complexity stays bounded; no full historical diff of retrospective edits |
 | Duplicate Muscle snapshots vs live join | snapshot names per SessionExercise | exact History; deliberate denormalization |
+| Live Routine vs weekly snapshot | normalized RoutineWeekPlan/Day rows | stable zero-session History and Coverage; additional weekly lifecycle |
+| Sequence pointer vs user choice | no `next_workout_index`; RoutineDay display order only | flexible selection; Today must derive recommendations from Coverage |
 
 ## 11. Not created by this document
 

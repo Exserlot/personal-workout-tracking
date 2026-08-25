@@ -1,5 +1,4 @@
 import type {
-  ActiveRoutinePreview,
   TemplateExercise,
   WorkoutTemplateSummary,
 } from "../../planning/domain/planning";
@@ -26,7 +25,7 @@ export function resolveTodayContentState({
   initialLoading: boolean;
   terminalSession?: WorkoutSession | null;
   activeSession: WorkoutSession | null;
-  preview: ActiveRoutinePreview | null;
+  preview: object | null;
   fatalError: boolean;
 }): TodayContentState {
   if (terminalSession) return "terminal-pending";

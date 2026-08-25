@@ -82,14 +82,8 @@ export interface Routine {
   id: string;
   name: string;
   weeklyFrequencyTarget: number;
-  nextWorkoutIndex: number;
-  isActive: boolean;
   revision: number;
   archivedAt: string | null;
-  days: RoutineDay[];
-}
-
-export interface RoutineSummary extends Omit<Routine, "days"> {
   days: RoutineDay[];
 }
 
@@ -106,16 +100,4 @@ export interface RoutineDraft {
   name: string;
   weeklyFrequencyTarget: number;
   days: RoutineDayDraft[];
-}
-
-export interface ActiveRoutinePreview {
-  routineId: string;
-  routineRevision: number;
-  routineDayId: string;
-  routineName: string;
-  weeklyFrequencyTarget: number;
-  nextWorkoutIndex: number;
-  dayCount: number;
-  dayLabel: string;
-  template: WorkoutTemplate;
 }

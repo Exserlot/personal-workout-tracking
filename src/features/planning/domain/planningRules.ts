@@ -89,25 +89,21 @@ export function moveItem<T>(items: T[], fromIndex: number, toIndex: number): T[]
   return next;
 }
 
-export function clampNextWorkoutIndex(index: number, dayCount: number) {
-  if (dayCount <= 0) return 0;
-  return Math.min(Math.max(0, index), dayCount - 1);
-}
-
 export function eligibleTemplates(templates: WorkoutTemplateSummary[]) {
   return templates.filter((template) => !template.archivedAt && template.exerciseCount > 0 && template.setCount > 0);
 }
 
-export function otherRoutines(routines: Routine[]) {
-  return routines.filter((routine) => !routine.isActive && !routine.archivedAt);
+export function otherRoutines(routines: Routine[], activeRoutineId?: string | null) {
+  return routines.filter((routine) => routine.id !== activeRoutineId && !routine.archivedAt);
 }
 
 export function plansPageActions(
   templates: WorkoutTemplateSummary[],
   routines: Routine[],
+  activeRoutineId?: string | null,
 ): PlanningAction[] {
   const hasEligibleTemplate = eligibleTemplates(templates).length > 0;
-  const active = routines.some((routine) => routine.isActive);
+  const active = Boolean(activeRoutineId);
   const hasSavedRoutine = routines.some((routine) => !routine.archivedAt);
   if (!hasEligibleTemplate) return [{ key: "create-template", label: "สร้าง Template", variant: "primary" }];
   if (!active && hasSavedRoutine) {

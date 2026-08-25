@@ -20,7 +20,7 @@ If a source Plan and Session snapshot disagree, History must use the Session sna
 - Every mutation is scoped to authenticated `user_id`; IDs alone never authorize access
 - Aggregate roots `Exercise`, `WorkoutTemplate`, `Routine` and `WorkoutSession` carry integer versions
 - Update requires expected version; mismatch returns conflict and does not partially apply
-- User may have at most one Active Routine and one Active Session
+- User may have at most one effective Routine per Routine Week and one Active Session
 - Non-owner device may read server-synced Active Session but may not edit it
 - A retried `operation_id` returns the prior result and must not run the mutation again
 
@@ -37,16 +37,32 @@ If a source Plan and Session snapshot disagree, History must use the Session sna
 
 ## 4. Routine, Template and Plan Day rules
 
-- Routine is the persisted Workout Plan and owns an ordered list of RoutineDays
-- RoutineDay sequence is unique, contiguous after save and starts at 1
+- Routine is the persisted Workout Plan and owns a selectable list of RoutineDays
+- RoutineDay display order is unique, contiguous after save and starts at 1, but never constrains execution order
 - Each RoutineDay references exactly one usable WorkoutTemplate
 - WorkoutTemplate owns ordered TemplateExercises; each TemplateExercise references one Exercise
 - TemplateExercise owns ordered SetPrescriptions; planned set count is derived from their row count
-- Active Routine requires at least one Day, each referenced Template requires at least one Exercise, and each planned Exercise requires at least one SetPrescription
-- Weekly frequency target is an integer 1–7 and does not schedule calendar dates
+- An effective Routine requires at least one Day, each referenced Template requires at least one Exercise, and each planned Exercise requires at least one SetPrescription
+- Weekly frequency target is an integer 1–7, defaults to RoutineDay count and remains user-editable
+- Routine activation has an explicit effective Routine Week: current or next; only one Routine is effective for a User in one week
+- Routine Week is Monday 00:00 through Sunday 23:59 in the User timezone; the timezone and boundaries are snapshotted per RoutineWeekPlan
+- RoutineWeekPlan snapshots the effective Routine, target and RoutineDays even when the week has zero Sessions
+- The first Routine Session locks RoutineWeekPlan; later Routine structure/activation changes take effect in the next Routine Week
 - Any child mutation increments the parent Template/Routine revision in the same transaction
 - Archiving a Template referenced by an active Routine is blocked until the reference is removed or another Routine is activated
-- Changing Active Routine is blocked while an Active Session exists
+- Before the first Routine Session, the current-week activation/plan may be replaced after confirmation; after lock it may not be mutated
+
+### Weekly Frequency, Coverage and notification rules
+
+- Session attribution uses `started_at`; a Session started Sunday and completed Monday belongs to the prior Routine Week
+- Frequency counts Completed, non-deleted Routine Sessions; repeated RoutineDays add one Frequency each
+- Coverage counts distinct RoutineWeekPlanDays with at least one Completed, non-deleted Routine Session; repeats never add Coverage twice
+- Ad-hoc, ACTIVE and DISCARDED Sessions do not satisfy Frequency or Coverage
+- A closed week with a crossing ACTIVE Session is PROVISIONAL until that Session becomes COMPLETED or DISCARDED
+- A finalized week stores History even at `0/target` and lists every uncovered RoutineWeekPlanDay
+- An incomplete finalized week creates one WeeklyRoutineNotification; missed weeks never collapse into one aggregate notification
+- Opening a notification sets `read_at`; only explicit Dismiss sets `dismissed_at`; neither changes Weekly Routine History
+- Retrospective edit/soft delete recalculates Weekly Routine History. The action warns before confirmation but never creates a new notification from that user-initiated change
 
 ## 5. Snapshot rules
 
@@ -154,11 +170,10 @@ not-created → ACTIVE → COMPLETED
 - Leaving the screen does not change ACTIVE status
 - COMPLETED requires `completed_at`; ACTIVE/DISCARDED must not use it as completion evidence
 - COMPLETED or DISCARDED cannot transition back to ACTIVE
-- Planned Session advances `next_workout_index` once on completion
-- Ad-hoc and discarded Sessions never advance Routine
-- Finish + Routine advancement + idempotency receipt commit atomically on server
+- Completed Routine Session invalidates/recalculates Frequency and Coverage once; ad-hoc and discarded Sessions do not count
+- Finish + weekly-result invalidation + idempotency receipt commit atomically on server
 - Soft-deleted Completed Session is excluded from History default queries and all Progress calculations
-- Retrospective edit does not change source Plan revisions or Routine position
+- Retrospective edit does not change source Plan/weekly snapshots; it may recalculate Weekly Routine History
 
 ## 10. Offline, sync and concurrency rules
 
@@ -209,7 +224,11 @@ not-created → ACTIVE → COMPLETED
 | Dual effort conflict | Set stores RPE 8 and RIR 4 simultaneously | tagged metric/value pair; mutually exclusive validation |
 | Set count drift | Template says 3 sets but contains 4 rows | derive count from set rows only |
 | Sequence collision | two Exercises both position 2 after reorder | unique constraint + atomic reorder |
-| Routine advances twice | Finish request retries | atomic finish transaction + idempotency receipt |
+| Frequency increments twice | Finish request retries | atomic finish transaction + idempotency receipt |
+| Coverage counts repeats | Push is completed twice and appears as two covered Days | distinct RoutineWeekPlanDay identity in Coverage query |
+| Week attribution drifts | Sunday Session is counted on Monday because `completed_at` was used | use `started_at` and timezone snapshot consistently |
+| Live Routine rewrites old week | Mid-week edit changes missing Days in History | immutable RoutineWeekPlan/Day snapshots |
+| Zero-session week disappears | no Session rows means no adherence record | materialize one RoutineWeekPlan per effective week |
 | Archived source breaks History | Exercise name disappears after archive | snapshot display fields; archive instead of hard delete |
 | Stale Progress | edited Set still shows old PR | invalidation transaction + stale marker/recalculation |
 | DROP/failure metric ambiguity | future set unexpectedly changes historical PR | orthogonal kind/flag plus versioned analytics policy before inclusion |
@@ -220,7 +239,7 @@ not-created → ACTIVE → COMPLETED
 | --- | --- | --- |
 | Required fields/ranges | application domain service | database CHECK/NOT NULL where portable |
 | Ownership/authorization | server application layer | row-level policy if selected vendor supports it |
-| Unique active Routine/Session | database unique constraint | transactional application check |
+| Unique effective Routine/RoutineWeekPlan/Active Session | database unique constraint | transactional application check |
 | Snapshot atomicity | database transaction | integration tests |
 | Idempotency | mutation receipt PK | client stable operation IDs |
 | Sequence uniqueness | database unique constraint | application reorder validation |
@@ -237,6 +256,12 @@ not-created → ACTIVE → COMPLETED
 6. Attempt invalid primary/secondary Muscle overlap, RPE/RIR pair, weight triplet and sequence collision
 7. Edit/soft-delete Completed Session and confirm Progress invalidation
 8. Archive Exercise/Template and confirm Session snapshot remains readable
+9. Complete Push twice and Legs once for a three-Day Routine; confirm Frequency `3/3`, Coverage `2/3` and Pull uncovered
+10. Complete a Sunday-started Session on Monday; confirm it belongs to the old week and the old result remains provisional while ACTIVE
+11. Close a zero-session week; confirm `0/target`, zero Coverage, all Days uncovered and one notification
+12. Open then dismiss a notification; confirm read/dismiss timestamps change without changing Weekly Routine History
+13. Edit/soft-delete an old Routine Session; confirm weekly result recalculates, confirmation warning appears and no new notification is inserted
+14. Start the first Routine Session, then edit/activate another Routine; confirm current RoutineWeekPlan is unchanged and the change is effective next week
 
 ## 16. Open implementation decisions
 

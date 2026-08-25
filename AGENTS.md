@@ -18,18 +18,18 @@ Exercise Library logic now lives under `src/features/exercises/` and uses a Supa
 
 ## Build, Test, and Development Commands
 
-Use the committed pnpm scripts:
+Use the committed npm scripts:
 
 ```powershell
-pnpm install
-pnpm dev
-pnpm typecheck
-pnpm lint
-pnpm build
-pnpm test
+npm install
+npm run dev
+npm run typecheck
+npm run lint
+npm run build
+npm test
 ```
 
-`dev` starts Vite; `typecheck`, `lint`, `test`, and `build` are required before handoff. Use `pnpm test:e2e` for Playwright coverage after starting the local app/database.
+`dev` starts Vite; `typecheck`, `lint`, `test`, and `build` are required before handoff. Use `npm run test:e2e` for Playwright coverage after starting the local app/database.
 
 ## Coding Style & Naming Conventions
 

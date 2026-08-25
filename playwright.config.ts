@@ -4,6 +4,7 @@ export default defineConfig({
   testDir: "./tests/e2e",
   timeout: 30_000,
   fullyParallel: true,
+  workers: process.env.CI ? 2 : 4,
   reporter: "list",
   use: {
     baseURL: "http://127.0.0.1:4180",
@@ -34,7 +35,7 @@ export default defineConfig({
   webServer: {
     command: "node node_modules/vite/bin/vite.js preview --host 127.0.0.1 --port 4180",
     url: "http://127.0.0.1:4180",
-    reuseExistingServer: false,
+    reuseExistingServer: !process.env.CI,
     timeout: 120_000,
   },
 });

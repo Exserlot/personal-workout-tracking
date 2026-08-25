@@ -14,6 +14,9 @@ const representativeRoutes = [
   "/progress",
   "/progress/missing-exercise",
   "/settings",
+  "/notifications",
+  "/routine-history",
+  "/routine-history/missing-week",
 ];
 
 async function assertNoAxeViolations(page: import("@playwright/test").Page, path: string) {

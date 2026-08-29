@@ -312,20 +312,22 @@ Routine Session แรกของสัปดาห์ต้อง lock Routine
 **Requirements:** FR-AW-02–03, FR-AW-09, BR-09  
 **Pages:** P-02 Today, P-07 Active Workout, P-13 Settings & Sync Status
 
-**Entry point:** server ปฏิเสธ mutation เพราะ device/version ownership ไม่ตรง  
-**Preconditions:** มี local state หรือ pending operations ที่ต้องรักษา
+**Entry point:** ผู้ใช้เปิด Active Session จาก non-owner device หรือ server ปฏิเสธ mutation เพราะ device/version ownership ไม่ตรง
+**Preconditions:** มี Active Session บน server; ownership transfer ต้อง online
 
 ### Flow
 
-1. Client หยุดส่ง operations ของ Session ที่ conflict
+1. Client หยุดส่ง operations ของ Session ที่ conflict และแสดง server-synced state แบบ read-only
 2. UI แสดง local version, server-synced summary และ owner-device information
 3. ไม่มี automatic last-write-wins หรือ field-level merge
-4. Primary action ให้กลับไป owner device
-5. Secondary administrative action อนุญาต abandon server session หลังคำเตือน หากผู้ใช้ยืนยันว่าไม่ต้องการข้อมูล unsynced จาก owner device
-6. Local conflicting copy ต้องไม่ถูกลบทันทีและต้องไม่ overwrite session ใหม่
+4. ถ้า non-owner device online และไม่มี local conflict ผู้ใช้เลือก `ทำต่อบนเครื่องนี้` และยืนยันว่า unsynced changes บนอุปกรณ์เดิมอาจไม่ตามมา
+5. Server เปลี่ยน owner device และ version แบบ atomic; อุปกรณ์ใหม่โหลด canonical state ใหม่ ส่วนอุปกรณ์เดิมกลายเป็น read-only เมื่อ mutation ถัดไปถูกตรวจ
+6. ถ้ามี conflict อยู่แล้ว Primary recovery ยังคงเป็นกลับไป owner device หรือใช้ข้อมูล server โดยรักษา local copy
+7. Secondary administrative action อนุญาต abandon server session หลังคำเตือน หากผู้ใช้ยืนยันว่าไม่ต้องการข้อมูล unsynced จาก owner device
+8. Local conflicting copy ต้องไม่ถูกลบทันทีและต้องไม่ overwrite session ใหม่
 
-**State change:** pending → conflict; server session อาจ active → discarded จาก explicit abandon  
-**Outcome:** ไม่มี silent data loss และผู้ใช้ทราบว่าต้องเลือกข้อมูลชุดใด
+**State change:** non-owner read-only → owner editable; pending → conflict; server session อาจ active → discarded จาก explicit abandon
+**Outcome:** ผู้ใช้ทำ Session ต่อข้ามอุปกรณ์ได้โดยยังคง single writer และไม่มี silent merge/data loss
 
 ## 11. UF-10 — Review, edit และ delete History
 

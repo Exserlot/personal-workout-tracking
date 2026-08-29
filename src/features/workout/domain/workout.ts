@@ -263,6 +263,7 @@ export interface WorkoutRepository {
   }): Promise<WorkoutSession>;
   finishSession(sessionId: string, deviceId: string, expectedVersion: number): Promise<WorkoutSession>;
   discardSession(sessionId: string, deviceId: string, expectedVersion: number): Promise<void>;
+  transferSessionOwnership(input: { operationId: string; sessionId: string; targetDeviceId: string; expectedVersion: number }): Promise<WorkoutSession>;
   remoteAbandonSession(input: { operationId: string; sessionId: string; expectedVersion: number }): Promise<WorkoutSession>;
   getCompletionSummary(sessionId: string): Promise<WorkoutCompletionSummary>;
 }

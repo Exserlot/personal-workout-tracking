@@ -312,6 +312,8 @@ IndexedDB `SyncOperation` records remain client-local and are not duplicated as 
 
 `workout_remote_abandon_session(operation_id, session_id, expected_version)` is an authenticated, receipt-backed RPC for explicit recovery. It locks the Session, verifies ownership of the account (but not the current browser device), changes only `ACTIVE` to `DISCARDED`, and never advances a Routine. The client must archive its local Session and pending operations before clearing them; the archive stays in browser-local IndexedDB and is never sent to the server automatically.
 
+`workout_transfer_session_ownership(operation_id, session_id, to_device_id, expected_version)` is an authenticated, receipt-backed RPC for cross-device continuation. It locks the Active Session, verifies the target is a non-revoked device owned by the same account, changes only `owner_device_id`, and increments `version`. A repeated operation is idempotent; no Session fields or pending client changes are merged.
+
 ## 7. Referential actions
 
 | Relationship | Recommended action | Reason |

@@ -188,4 +188,32 @@ describe("SupabaseWorkoutRepository contract", () => {
     expect(session.status).toBe("DISCARDED");
     expect(requests[1]).toMatchObject({ path: "rpc/workout_remote_abandon_session", body: { p_operation_id: "operation-abandon", p_session_id: "session-1", p_expected_version: 1 } });
   });
+
+  it("transfers session ownership and reloads the canonical server snapshot", async () => {
+    const requests: SupabaseRequest[] = [];
+    const client: SupabaseDataClient = {
+      request: async <T>(request: SupabaseRequest) => {
+        requests.push(request);
+        if (request.path === "rpc/workout_transfer_session_ownership") return 2 as T;
+        return [{ ...sessionRow(), owner_device_id: "device-2", version: 2 }] as T;
+      },
+    };
+    const session = await new SupabaseWorkoutRepository(client).transferSessionOwnership({
+      operationId: "operation-transfer",
+      sessionId: "session-1",
+      targetDeviceId: "device-2",
+      expectedVersion: 1,
+    });
+    expect(session.ownerDeviceId).toBe("device-2");
+    expect(requests[0]).toMatchObject({
+      method: "POST",
+      path: "rpc/workout_transfer_session_ownership",
+      body: {
+        p_operation_id: "operation-transfer",
+        p_session_id: "session-1",
+        p_to_device_id: "device-2",
+        p_expected_version: 1,
+      },
+    });
+  });
 });

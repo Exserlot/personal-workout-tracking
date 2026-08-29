@@ -21,7 +21,7 @@ If a source Plan and Session snapshot disagree, History must use the Session sna
 - Aggregate roots `Exercise`, `WorkoutTemplate`, `Routine` and `WorkoutSession` carry integer versions
 - Update requires expected version; mismatch returns conflict and does not partially apply
 - User may have at most one effective Routine per Routine Week and one Active Session
-- Non-owner device may read server-synced Active Session but may not edit it
+- Non-owner device may read server-synced Active Session but may not edit it until an online, explicit ownership transfer atomically changes `owner_device_id` and increments `version`
 - A retried `operation_id` returns the prior result and must not run the mutation again
 
 ## 3. Exercise and Muscle rules
@@ -185,7 +185,7 @@ not-created → ACTIVE → COMPLETED
 - Version/owner-device conflict stops the affected Session queue; no last-write-wins or automatic field merge
 - Network response with older version cannot overwrite newer local pending state
 - Logout must not erase pending operations automatically
-- Conflict recovery never uses last-write-wins or automatic merge; local data is archived before using the server copy or explicit remote abandon
+- Conflict recovery and ownership transfer never use last-write-wins or automatic merge; transfer adopts the canonical server copy, while conflicting local data is archived before using the server copy or explicit remote abandon
 - Remote abandon changes only an authenticated user's `ACTIVE` Session to `DISCARDED`, does not advance Routine, and is idempotent by operation ID
 - Mutation receipt retention must exceed the supported offline retry window
 - Snapshot Start retries from a consistent source revision; it never mixes children from two Template revisions

@@ -313,13 +313,13 @@ test.describe("Today experience", () => {
     await expect(planned.getByText("0/3", { exact: true })).toBeVisible();
   });
 
-  test("shows an Active Session from another device as read-only", async ({ page }) => {
+  test("offers to continue an Active Session from another device", async ({ page }) => {
     await mockToday(page, { activeSession: sessionRow(otherDeviceId) });
     await page.goto("/today");
 
     const active = page.getByTestId("today-active-session");
-    await expect(active.getByRole("link", { name: "ดูแบบอ่านอย่างเดียว", exact: true })).toBeVisible();
-    await expect(active).toContainText("กลับไปยังอุปกรณ์ที่เริ่ม Session");
+    await expect(active.getByRole("link", { name: "เปิดเพื่อทำต่อบนเครื่องนี้", exact: true })).toBeVisible();
+    await expect(active).toContainText("เครื่องเดิมจะเปลี่ยนเป็นอ่านอย่างเดียว");
   });
 
   test("keeps one Plans action and one Ad-hoc action when no Routine exists", async ({ page }) => {

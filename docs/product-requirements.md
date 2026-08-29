@@ -63,7 +63,7 @@
 | Workout Session | เหตุการณ์ฝึกจริงที่สร้างจาก Template snapshot หรือเริ่มแบบ ad-hoc |
 | Active Session | Workout Session ที่เริ่มแล้วแต่ยังไม่ completed หรือ discarded |
 | Completed Session | Workout Session ที่จบแล้วและนำไปคำนวณ History/Progress |
-| Owner device | อุปกรณ์ที่เริ่ม Active Session และมีสิทธิ์แก้ session นั้น |
+| Owner device | อุปกรณ์ที่มีสิทธิ์แก้ Active Session ในขณะนั้น เริ่มต้นจากอุปกรณ์ที่สร้าง Session และเปลี่ยนได้ด้วย explicit ownership transfer |
 | Working set | เซ็ตหลักที่นำไปคำนวณ volume, estimated 1RM และ PR |
 | Warm-up set | เซ็ตเตรียมความพร้อมที่เก็บใน History แต่ไม่นำไปคำนวณ Progress |
 
@@ -103,7 +103,7 @@
 
 - **FR-AW-01 — Template snapshot:** เมื่อเริ่มจาก Template ระบบต้อง snapshot ชื่อ ลำดับ Exercise และ targets ลง Session ก่อนเปิดให้บันทึก
 - **FR-AW-02 — Single Active Session:** Owner account ต้องมี Active Session ได้ครั้งละหนึ่งรายการ
-- **FR-AW-03 — Device ownership:** เฉพาะ owner device ที่เริ่ม Session เท่านั้นที่แก้ set, exercise, note หรือสถานะ completed ได้ อุปกรณ์อื่นดู server-synced state ได้แบบ read-only
+- **FR-AW-03 — Device ownership:** เฉพาะ owner device ปัจจุบันเท่านั้นที่แก้ set, exercise, note หรือสถานะ completed ได้ อุปกรณ์อื่นดู server-synced state แบบ read-only และย้าย ownership มาที่อุปกรณ์ของบัญชีเดียวกันได้เมื่อ online หลังยืนยันผลกระทบต่อข้อมูล unsynced
 - **FR-AW-04 — Set logging:** ผู้ใช้ต้องเพิ่ม แก้ complete และลบ SetLog ที่มี set type, weight ตั้งแต่ 0 ขึ้นไป, reps เป็นจำนวนเต็มบวก และ RIR เป็นจำนวนเต็ม 0–10 ได้
 - **FR-AW-05 — Fast repeat entry:** ระบบต้องเสนอค่าจาก working set ล่าสุดของ Exercise นั้นเพื่อช่วยกรอก โดยผู้ใช้ต้องยืนยันก่อนบันทึก
 - **FR-AW-06 — Session flexibility:** ผู้ใช้ต้องเพิ่ม ลบ และเรียง Exercise หรือปรับจำนวนเซ็ตใน Session ได้ โดยไม่แก้ Template ต้นทาง
@@ -156,7 +156,7 @@
 - **BR-06:** เฉพาะ working sets จาก Completed Sessions ที่ไม่ถูกลบใช้คำนวณ Progress
 - **BR-07:** Exercise และ Session ที่ถูกอ้างอิงต้องใช้ archive/soft delete เพื่อรักษาความสมบูรณ์ของ History
 - **BR-08:** Server เป็น source of truth สำหรับข้อมูลที่ sync แล้ว; IndexedDB เป็น durable working store สำหรับ Active Session และ pending operations
-- **BR-09:** Non-owner device ห้ามแก้ Active Session; การ abandon remote session เป็น explicit administrative action พร้อมคำเตือนและต้องไม่ทับ unsynced local copy
+- **BR-09:** Non-owner device ห้ามแก้ Active Session จนกว่าจะทำ explicit ownership transfer; transfer ต้องใช้ server version ล่าสุด, ไม่ merge ข้อมูลอัตโนมัติ และทำให้อุปกรณ์เดิมเป็น read-only ส่วน remote abandon ยังเป็น administrative action พร้อมคำเตือนและต้องไม่ทับ unsynced local copy
 - **BR-10:** Routine Week Plan ถูกตรึงเมื่อเริ่ม Routine Session แรก; การเปลี่ยนแผนหลังจากนั้นมีผล Routine Week ถัดไป
 - **BR-11:** Weekly Frequency Target ตั้งต้นเท่าจำนวน Routine Days แต่เป็นค่าที่ผู้ใช้แก้ได้และอาจมากกว่า Coverage denominator
 
@@ -249,7 +249,7 @@ Progress เป็น derived data จาก Completed Sessions ไม่ใช�
 3. เริ่ม Session แล้วพยายามเริ่มอีก Session; ระบบต้องเสนอ Resume หรือ Discard รายการเดิม
 4. บันทึกหลายเซ็ตขณะ offline, reload แล้วข้อมูลยังอยู่ครบ
 5. reconnect และ retry operation เดิมหลายครั้งแล้ว server มี SetLog เพียงรายการเดียวต่อ stable ID
-6. เปิด Active Session จากอุปกรณ์อื่นแล้วแก้ไม่ได้และเห็น owner-device explanation
+6. เปิด Active Session จากอุปกรณ์อื่นแล้วเห็น owner-device explanation; เมื่อ online สามารถยืนยันย้าย ownership และทำต่อได้ โดยอุปกรณ์เดิมแก้ต่อไม่ได้
 7. Complete Push สองครั้งและ Legs หนึ่งครั้งใน Routine เป้าหมาย 3 ต้องได้ Frequency `3/3`, Coverage `2/3` และระบุว่า Pull ยังขาด; ad-hoc/discarded ไม่นับ
 8. เมื่อขึ้นวันจันทร์ Routine Week ใหม่ต้องเริ่มตัวเลือกใหม่ทั้งหมด และสัปดาห์เก่าที่ไม่ครบต้องมีประวัติพร้อม notification แยก
 9. Session ที่เริ่มวันอาทิตย์และ Finish วันจันทร์ต้องนับสัปดาห์เก่า; ถ้ายัง active ผลสัปดาห์เก่าต้องเป็น provisional

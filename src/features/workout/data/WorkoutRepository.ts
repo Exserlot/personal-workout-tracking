@@ -477,6 +477,28 @@ export class SupabaseWorkoutRepository implements WorkoutRepository {
     }
   }
 
+  async transferSessionOwnership(input: { operationId: string; sessionId: string; targetDeviceId: string; expectedVersion: number }): Promise<WorkoutSession> {
+    try {
+      const resultVersion = rpcVersion(await this.client.request<unknown>({
+        method: "POST",
+        path: "rpc/workout_transfer_session_ownership",
+        body: {
+          p_operation_id: input.operationId,
+          p_session_id: input.sessionId,
+          p_to_device_id: input.targetDeviceId,
+          p_expected_version: input.expectedVersion,
+        },
+      }));
+      const session = await this.getSessionById(input.sessionId);
+      if (!session || session.version < resultVersion || session.ownerDeviceId !== input.targetDeviceId) {
+        throw new WorkoutRepositoryError("server", "ย้าย Session สำเร็จแต่โหลดสิทธิ์ล่าสุดไม่ได้");
+      }
+      return session;
+    } catch (error) {
+      throw mapError(error, "ย้าย Session มาที่อุปกรณ์นี้ไม่สำเร็จ");
+    }
+  }
+
   async getCompletionSummary(sessionId: string): Promise<WorkoutCompletionSummary> {
     try {
       const session = await this.getSessionById(sessionId);

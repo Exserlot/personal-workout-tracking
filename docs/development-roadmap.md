@@ -85,7 +85,7 @@ Plan editing, Exercise mutations, History edits และ Progress queries ต�
 ### Conflict policy
 
 - ไม่มี last-write-wins และไม่มี automatic multi-device merge
-- Non-owner device เป็น read-only
+- Non-owner device เป็น read-only จนกว่าจะยืนยัน online ownership transfer
 - Version mismatch หยุดเฉพาะ queue ของ Session ที่เกี่ยวข้อง
 - เก็บ local conflicting copy จนผู้ใช้ตัดสินใจ
 - Explicit remote abandon ต้องมีคำเตือนและไม่ลบ unsynced local copy จากอุปกรณ์เดิม
@@ -137,7 +137,7 @@ Plan editing, Exercise mutations, History edits และ Progress queries ต�
 - IndexedDB Active Session store และ SyncOperation journal
 - Reload/browser-restart recovery
 - Idempotent retry, version check และ sync status UI
-- Owner-device read-only behavior, conflict state และ explicit abandon policy
+- Owner-device read-only behavior, explicit ownership transfer, conflict state และ explicit abandon policy
 
 **Covers:** FR-AW-02–03, FR-AW-08–09, FR-ST-02, NFR-03–04  
 **Exit criteria:** Offline/reconnect tests ไม่สูญหายหรือสร้าง SetLog ซ้ำ; non-owner mutation ถูกปฏิเสธทั้ง client/server; conflict ไม่ overwrite ข้อมูล
@@ -254,7 +254,7 @@ Plan editing, Exercise mutations, History edits และ Progress queries ต�
 | Body metrics/goals | เป็น domain ใหม่ | ไม่รวมใน Workout Session schema |
 | Import/export | ต้องกำหนด stable external contract | ใช้ stable entity IDs ภายในก่อน |
 | Wearables/health platforms | external permissions/sync complexity | Integration layer แยกจาก domains |
-| Cross-device handoff/multi-user | concurrency และ authorization เพิ่มมาก | device ownership/versioning เป็นฐาน แต่ไม่ทำ live merge |
+| Live cross-device merge/multi-user editing | concurrency และ authorization เพิ่มมาก | รองรับ explicit single-writer handoff แล้ว แต่ไม่ทำ live merge |
 
 ## 9. Cross-document traceability
 

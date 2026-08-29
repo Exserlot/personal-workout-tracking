@@ -16,6 +16,7 @@ class UnconfiguredWorkoutRepository implements WorkoutRepository {
   applyIdempotentCommand(): Promise<never> { return Promise.reject(this.error); }
   finishSession(): Promise<never> { return Promise.reject(this.error); }
   discardSession(): Promise<never> { return Promise.reject(this.error); }
+  transferSessionOwnership(): Promise<never> { return Promise.reject(this.error); }
   remoteAbandonSession(): Promise<never> { return Promise.reject(this.error); }
   getCompletionSummary(): Promise<never> { return Promise.reject(this.error); }
 }

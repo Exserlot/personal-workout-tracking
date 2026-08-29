@@ -471,7 +471,7 @@ export function TodayPage() {
                   ? "ข้อมูลล่าสุดที่เก็บไว้บนอุปกรณ์นี้"
                   : ownerDevice
                     ? "Session นี้พร้อมทำต่อบนอุปกรณ์นี้"
-                    : "Session นี้เริ่มจากอุปกรณ์อื่นและเปิดได้แบบอ่านอย่างเดียว"}
+                    : "Session นี้เริ่มจากอุปกรณ์อื่น เปิดดูหรือย้ายมาทำต่อบนเครื่องนี้ได้"}
               </p>
               <Link
                 to={`/workout/active?session=${activeSession.id}`}
@@ -482,7 +482,7 @@ export function TodayPage() {
                   className: "mt-6 tablet:w-auto",
                 })}
               >
-                {cached ? "เปิด Workout" : ownerDevice ? "Resume Workout" : "ดูแบบอ่านอย่างเดียว"}
+                {cached ? "เปิด Workout" : ownerDevice ? "Resume Workout" : "เปิดเพื่อทำต่อบนเครื่องนี้"}
               </Link>
 
               {loadStatus === "refreshing" ? (
@@ -495,7 +495,7 @@ export function TodayPage() {
               ) : null}
               {!cached && !ownerDevice ? (
                 <div className="mt-4 border-l-2 border-warning pl-4 text-sm leading-6 text-ink-secondary">
-                  กลับไปยังอุปกรณ์ที่เริ่ม Session เพื่อบันทึกหรือจบ Workout
+                  การย้ายสิทธิ์ต้องออนไลน์ และเครื่องเดิมจะเปลี่ยนเป็นอ่านอย่างเดียว
                 </div>
               ) : null}
 

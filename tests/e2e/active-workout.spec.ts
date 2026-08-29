@@ -203,6 +203,12 @@ test.describe("Active Workout set logging", () => {
         await route.fulfill({ json: deviceId });
         return;
       }
+      if (rpc === "workout_transfer_session_ownership") {
+        session.owner_device_id = String(body.p_to_device_id);
+        session.version += 1;
+        await route.fulfill({ json: session.version });
+        return;
+      }
       if (rpc === "workout_apply_command" || rpc === "workout_apply_command_idempotent") {
         const command = body.p_command as Record<string, unknown>;
         if (command.action === "finish_session" || command.action === "discard_session") {
@@ -481,7 +487,7 @@ test.describe("Active Workout set logging", () => {
     await expect(page.getByTestId("rest-timer")).toHaveText("พร้อม");
   });
 
-  test("allows read-only devices to inspect another Exercise", async ({ page }) => {
+  test("lets a read-only device inspect then take over the Active Session", async ({ page }) => {
     session.workout_session_exercises.push(makeSecondSessionExercise());
     session.owner_device_id = "99999999-9999-4999-8999-999999999999";
     await page.reload();
@@ -489,6 +495,15 @@ test.describe("Active Workout set logging", () => {
     await expect(page.getByTestId("primary-set-action")).toBeDisabled();
     await page.getByRole("button", { name: "ท่าถัดไป", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Barbell Bent-Over Row" })).toBeVisible();
+
+    await page.getByRole("button", { name: "ทำต่อบนเครื่องนี้", exact: true }).click();
+    const confirmation = page.getByRole("alertdialog", { name: "ย้าย Session มาที่เครื่องนี้?" });
+    await expect(confirmation).toContainText("เครื่องเดิมจะเปลี่ยนเป็นอ่านอย่างเดียว");
+    await confirmation.getByRole("button", { name: "ย้าย Session มาที่เครื่องนี้", exact: true }).click();
+
+    await expect(page.getByRole("heading", { name: "Session นี้เริ่มจากอุปกรณ์อื่น" })).toHaveCount(0);
+    await expect(page.getByTestId("primary-set-action")).toBeEnabled();
+    await expect(page.getByRole("heading", { name: "Barbell Bench Press" })).toBeVisible();
   });
 
   test("keeps desktop set controls separated and within the workspace", async ({ page }) => {

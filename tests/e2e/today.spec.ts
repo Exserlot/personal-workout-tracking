@@ -177,7 +177,7 @@ async function mockToday(
     status: "OPEN",
     locked_at: null,
     finalized_at: null,
-    days: routine.routine_days.map((day, index) => ({ id: `week-day-${index + 1}`, routine_day_id: day.id, template_id: day.template_id, display_order: index + 1, day_label: day.label, template_name: day.template.name, completed_count: options.completedCounts?.[index] ?? 0 })),
+    days: routine.routine_days.map((day, index) => ({ id: `week-day-${index + 1}`, routine_day_id: day.id, template_id: day.template_id, display_order: index + 1, day_label: day.label, template_name: day.template.name, completed_count: options.completedCounts?.[index] ?? 0, active_count: 0 })),
   } : null;
 
   await page.route("**/rest/v1/**", async (route) => {
@@ -231,6 +231,10 @@ async function mockToday(
     const rpc = new URL(route.request().url()).pathname.split("/").pop();
     if (rpc === "workout_register_device") {
       await route.fulfill({ json: deviceId });
+      return;
+    }
+    if (rpc === "preferences_get_or_create_timezone") {
+      await route.fulfill({ json: "Asia/Bangkok" });
       return;
     }
     if (rpc === "routine_get_current_week") {

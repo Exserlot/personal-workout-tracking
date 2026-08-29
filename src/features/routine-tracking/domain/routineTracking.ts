@@ -8,6 +8,7 @@ export interface RoutineWeekDayStatus {
   dayLabel: string;
   templateName: string;
   completedCount: number;
+  activeCount: number;
 }
 
 export interface RoutineWeekSummary {

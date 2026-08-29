@@ -51,6 +51,7 @@ function parseDay(value: unknown): RoutineWeekDayStatus {
     dayLabel: string(row.day_label, "day.day_label") as string,
     templateName: string(row.template_name, "day.template_name") as string,
     completedCount: integer(row.completed_count, "day.completed_count"),
+    activeCount: integer(row.active_count, "day.active_count"),
   };
 }
 
@@ -130,17 +131,32 @@ function mapError(error: unknown, fallback: string) {
 }
 
 export class SupabaseRoutineTrackingRepository implements RoutineTrackingRepository {
+  private timezoneInitialization: Promise<void> | null = null;
+
   constructor(private readonly client: SupabaseDataClient) {}
 
   private async rpc<T>(name: string, body: Record<string, unknown> = {}) {
     return this.client.request<T>({ method: "POST", path: `rpc/${name}`, body });
   }
 
-  async reconcile() { try { await this.rpc("routine_reconcile_weeks"); } catch (error) { throw mapError(error, "ปรับสถานะ Routine Week ไม่สำเร็จ"); } }
-  async getCurrentWeek() { try { return parseCurrentWeek(await this.rpc("routine_get_current_week")); } catch (error) { throw mapError(error, "โหลด Routine Week ปัจจุบันไม่สำเร็จ"); } }
-  async listHistory() { try { return array(await this.rpc("routine_list_history", { p_limit: 52, p_offset: 0 }), "history").map(parseRoutineWeek); } catch (error) { throw mapError(error, "โหลด Weekly Routine History ไม่สำเร็จ"); } }
-  async getWeek(id: string) { try { return parseRoutineWeek(await this.rpc("routine_get_week", { p_week_plan_id: id })); } catch (error) { throw mapError(error, "โหลดรายละเอียด Routine Week ไม่สำเร็จ"); } }
-  async listNotifications() { try { return array(await this.rpc("routine_list_notifications"), "notifications").map(parseNotification); } catch (error) { throw mapError(error, "โหลด Notification Center ไม่สำเร็จ"); } }
+  private ensureTimezone() {
+    if (!this.timezoneInitialization) {
+      const detectedTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+      this.timezoneInitialization = this.rpc("preferences_get_or_create_timezone", {
+        p_detected_timezone: detectedTimezone,
+      }).then(() => undefined).catch((error) => {
+        this.timezoneInitialization = null;
+        throw error;
+      });
+    }
+    return this.timezoneInitialization;
+  }
+
+  async reconcile() { try { await this.ensureTimezone(); await this.rpc("routine_reconcile_weeks"); } catch (error) { throw mapError(error, "ปรับสถานะ Routine Week ไม่สำเร็จ"); } }
+  async getCurrentWeek() { try { await this.ensureTimezone(); return parseCurrentWeek(await this.rpc("routine_get_current_week")); } catch (error) { throw mapError(error, "โหลด Routine Week ปัจจุบันไม่สำเร็จ"); } }
+  async listHistory() { try { await this.ensureTimezone(); return array(await this.rpc("routine_list_history", { p_limit: 52, p_offset: 0 }), "history").map(parseRoutineWeek); } catch (error) { throw mapError(error, "โหลด Weekly Routine History ไม่สำเร็จ"); } }
+  async getWeek(id: string) { try { await this.ensureTimezone(); return parseRoutineWeek(await this.rpc("routine_get_week", { p_week_plan_id: id })); } catch (error) { throw mapError(error, "โหลดรายละเอียด Routine Week ไม่สำเร็จ"); } }
+  async listNotifications() { try { await this.ensureTimezone(); return array(await this.rpc("routine_list_notifications"), "notifications").map(parseNotification); } catch (error) { throw mapError(error, "โหลด Notification Center ไม่สำเร็จ"); } }
   async markNotificationRead(id: string) { try { await this.rpc("routine_mark_notification_read", { p_notification_id: id }); } catch (error) { throw mapError(error, "อ่าน Notification ไม่สำเร็จ"); } }
   async dismissNotification(id: string) { try { await this.rpc("routine_dismiss_notification", { p_notification_id: id }); } catch (error) { throw mapError(error, "ปิด Notification ไม่สำเร็จ"); } }
   async getSessionRemovalImpact(sessionId: string) {
@@ -160,8 +176,20 @@ export class SupabaseRoutineTrackingRepository implements RoutineTrackingReposit
       } satisfies SessionRemovalImpact;
     } catch (error) { throw mapError(error, "คำนวณผลกระทบจากการลบไม่สำเร็จ"); }
   }
-  async getTimezone(detectedTimezone: string) { try { return string(await this.rpc("preferences_get_or_create_timezone", { p_detected_timezone: detectedTimezone }), "timezone") as string; } catch (error) { throw mapError(error, "โหลด Timezone ไม่สำเร็จ"); } }
-  async updateTimezone(timezone: string) { try { return string(await this.rpc("preferences_update_timezone", { p_timezone: timezone }), "timezone") as string; } catch (error) { throw mapError(error, "บันทึก Timezone ไม่สำเร็จ"); } }
+  async getTimezone(detectedTimezone: string) {
+    try {
+      const timezone = string(await this.rpc("preferences_get_or_create_timezone", { p_detected_timezone: detectedTimezone }), "timezone") as string;
+      this.timezoneInitialization = Promise.resolve();
+      return timezone;
+    } catch (error) { throw mapError(error, "โหลด Timezone ไม่สำเร็จ"); }
+  }
+  async updateTimezone(timezone: string) {
+    try {
+      const updatedTimezone = string(await this.rpc("preferences_update_timezone", { p_timezone: timezone }), "timezone") as string;
+      this.timezoneInitialization = Promise.resolve();
+      return updatedTimezone;
+    } catch (error) { throw mapError(error, "บันทึก Timezone ไม่สำเร็จ"); }
+  }
 }
 
 class UnconfiguredRoutineTrackingRepository implements RoutineTrackingRepository {

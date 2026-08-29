@@ -30,7 +30,7 @@ The interface follows a restrained dark-mode Swiss International Style:
 
 ## Current Status
 
-The complete owner flow is implemented through Exercise Library, Planning, Today, online/offline Workout execution, History, Sync recovery and live Progress/PR calculations. Release hardening is in progress: the repository now includes an installable PWA foundation, typed environments, privacy-safe monitoring, bundle budgets and staging/production workflows. Production launch and backup/restore rehearsal are not complete.
+The complete owner flow is implemented through Exercise Library, flexible weekly Routine planning, Today, online/offline Workout execution, Workout/Weekly Routine History, in-app notifications, Sync recovery and live Progress/PR calculations. The completion migration and all local quality/database gates pass; applying that migration to the linked Supabase project and rerunning Firefox from a non-elevated Windows terminal remain release steps. Production launch and backup/restore rehearsal are not complete.
 
 ## Tech Stack
 

@@ -52,7 +52,18 @@ export function NotificationsPage() {
   useEffect(() => { void load(); }, [load]);
 
   async function open(item: WeeklyRoutineNotification) {
-    if (!offline && !item.readAt) await repository.markNotificationRead(item.id).catch(() => undefined);
+    setError("");
+    if (!offline && !item.readAt) {
+      try {
+        await repository.markNotificationRead(item.id);
+        setItems((current) => current.map((entry) => entry.id === item.id
+          ? { ...entry, readAt: new Date().toISOString() }
+          : entry));
+      } catch (reason) {
+        setError(reason instanceof Error ? reason.message : "อ่าน Notification ไม่สำเร็จ");
+        return;
+      }
+    }
     navigate(`/routine-history/${item.weekPlanId}`);
   }
   async function dismiss(item: WeeklyRoutineNotification) {
@@ -125,7 +136,14 @@ export function RoutineWeekDetailPage() {
   if (!week) return <PageFrame pageId="P-16" eyebrow="P-16 · WEEK DETAIL" title="กำลังโหลด Routine Week…" description="กำลังคำนวณ Frequency และ Coverage"><span /></PageFrame>;
   return <PageFrame pageId="P-16" eyebrow="P-16 · WEEK DETAIL" title={week.routineName} description={`${dateRange(week.weekStart, week.weekEnd)} · ${week.timezone}`} action={<Link to="/routine-history" className={buttonStyles({ variant: "quiet" })}>ประวัติทั้งหมด</Link>}>
     <WeekMetrics week={week} />
-    <section className="mt-8 border-t border-line"><h2 className="py-4 text-h3">Routine Days</h2>{week.days.map((day) => <div key={day.id} className="grid grid-cols-[1fr_auto] gap-4 border-t border-line-subtle py-4"><div><p className="font-semibold">{day.dayLabel}</p><p className="mt-1 text-sm text-ink-muted">{day.templateName}</p></div><p className={`text-sm font-semibold ${day.completedCount ? "text-success" : "text-warning"}`}>{day.completedCount ? `เล่น ${day.completedCount} ครั้ง` : "ไม่ได้เล่น"}</p></div>)}</section>
+    <section className="mt-8 border-t border-line"><h2 className="py-4 text-h3">Routine Days</h2>{week.days.map((day) => {
+      const state = day.completedCount > 0
+        ? { label: `เล่น ${day.completedCount} ครั้ง`, className: "text-success" }
+        : day.activeCount > 0
+          ? { label: "กำลังดำเนินการ", className: "text-warning" }
+          : { label: "ไม่ได้เล่น", className: "text-warning" };
+      return <div key={day.id} className="grid grid-cols-[1fr_auto] gap-4 border-t border-line-subtle py-4"><div><p className="font-semibold">{day.dayLabel}</p><p className="mt-1 text-sm text-ink-muted">{day.templateName}</p></div><p className={`text-sm font-semibold ${state.className}`}>{state.label}</p></div>;
+    })}</section>
     {week.status === "PROVISIONAL" ? <p className="mt-6 border-l-2 border-warning pl-4 text-sm text-warning">มี Active Session จากสัปดาห์นี้ค้างอยู่ ผลลัพธ์จึงยังเป็น Provisional</p> : null}
   </PageFrame>;
 }

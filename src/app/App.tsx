@@ -60,12 +60,12 @@ export function App() {
       <ExerciseRepositoryProvider repository={exerciseRepository}>
         <PlanningRepositoryProvider repository={planningRepository}>
           <RoutineTrackingRepositoryProvider repository={routineTrackingRepository}>
-          <WorkoutRepositoryProvider repository={workoutRepository}>
-          <WorkoutSyncProvider>
-          <HistoryRepositoryProvider repository={historyRepository}>
-          <ProgressRepositoryProvider repository={progressRepository}>
-          <Suspense fallback={<RouteLoading />}>
-            <Routes>
+            <WorkoutRepositoryProvider repository={workoutRepository}>
+              <WorkoutSyncProvider>
+                <HistoryRepositoryProvider repository={historyRepository}>
+                  <ProgressRepositoryProvider repository={progressRepository}>
+                    <Suspense fallback={<RouteLoading />}>
+                      <Routes>
               <Route path="/login" element={<LoginPage />} />
               <Route element={<ProtectedRoute />}>
                 <Route element={<AppShell />}>
@@ -89,13 +89,13 @@ export function App() {
                   <Route path="*" element={<NotFoundPage />} />
                 </Route>
               </Route>
-            </Routes>
-          </Suspense>
-          <PwaUpdatePrompt />
-          </ProgressRepositoryProvider>
-          </HistoryRepositoryProvider>
-          </WorkoutSyncProvider>
-          </WorkoutRepositoryProvider>
+                      </Routes>
+                    </Suspense>
+                    <PwaUpdatePrompt />
+                  </ProgressRepositoryProvider>
+                </HistoryRepositoryProvider>
+              </WorkoutSyncProvider>
+            </WorkoutRepositoryProvider>
           </RoutineTrackingRepositoryProvider>
         </PlanningRepositoryProvider>
       </ExerciseRepositoryProvider>

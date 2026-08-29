@@ -21,7 +21,7 @@ function CompactHeader({ onMenu, menuRef, unreadCount }: { onMenu: () => void; m
       </div>
       <div className="flex items-center gap-1">
         <Link to="/notifications" className="relative grid h-11 w-11 place-items-center" aria-label={`การแจ้งเตือน${unreadCount ? ` ยังไม่ได้อ่าน ${unreadCount} รายการ` : ""}`}><Icon name="notifications" />{unreadCount ? <span className="absolute right-0 top-0 min-w-5 rounded-full bg-accent px-1 text-center text-[10px] font-bold leading-5 text-canvas">{unreadCount > 99 ? "99+" : unreadCount}</span> : null}</Link>
-        <Button ref={menuRef} variant="quiet" className="h-11 w-11 px-0" onClick={onMenu} aria-label="เปิดเมนู"><Icon name="menu" /></Button>
+        <Button ref={menuRef} variant="quiet" className="h-11 w-11 !px-0" onClick={onMenu} aria-label="เปิดเมนู"><Icon name="menu" className="h-6 w-6" /></Button>
       </div>
     </header>
   );

@@ -42,7 +42,7 @@ test.describe("Workout Plans and Routine", () => {
         frequency_actual: 0, frequency_target: routine.weekly_frequency_target,
         coverage_actual: 0, coverage_target: routine.routine_days.length,
         status: "OPEN", locked_at: null, finalized_at: null,
-        days: routine.routine_days.map((day, index) => ({ id: `week-day-${index + 1}`, routine_day_id: String(day.id), template_id: String(day.template_id), display_order: index + 1, day_label: String(day.label), template_name: (day.template as MockTemplate).name, completed_count: 0 })),
+        days: routine.routine_days.map((day, index) => ({ id: `week-day-${index + 1}`, routine_day_id: String(day.id), template_id: String(day.template_id), display_order: index + 1, day_label: String(day.label), template_name: (day.template as MockTemplate).name, completed_count: 0, active_count: 0 })),
       } : null;
     };
 
@@ -89,6 +89,10 @@ test.describe("Workout Plans and Routine", () => {
       const body = request.postDataJSON() as Record<string, unknown>;
       if (rpc === "workout_register_device") {
         await route.fulfill({ json: "11111111-1111-4111-8111-111111111111" });
+        return;
+      }
+      if (rpc === "preferences_get_or_create_timezone") {
+        await route.fulfill({ json: "Asia/Bangkok" });
         return;
       }
       if (rpc === "routine_get_current_week") {

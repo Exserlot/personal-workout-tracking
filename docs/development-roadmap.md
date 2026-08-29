@@ -32,7 +32,7 @@ flowchart LR
 | Layer | Responsibility |
 | --- | --- |
 | Client/PWA | responsive UI, local validation, timer, IndexedDB transactions, optimistic local state, sync coordination |
-| Application layer | authorization, business rules, idempotency, version checks, atomic Routine advancement, progress queries |
+| Application layer | authorization, business rules, idempotency, version checks, Routine Week finalization, progress queries |
 | Data layer | server source of truth สำหรับ synced entities, relational integrity, soft delete, backups |
 | Integration layer | managed auth, hosting, logging/monitoring; ไม่มี fitness integrations ใน MVP |
 
@@ -42,9 +42,9 @@ flowchart LR
 | --- | --- | --- |
 | Identity & Preferences | owner identity, unit/timer/timezone preferences | managed auth |
 | Exercise Catalog | starter/custom Exercises, taxonomy, archive state | Identity |
-| Planning | Templates, TemplateExercises, Routines, next index | Exercise Catalog |
+| Planning | Templates, TemplateExercises, Routines, effective-week activation, RoutineWeekPlan | Exercise Catalog, Identity timezone |
 | Workout Execution | Session snapshot, SessionExercises, SetLogs, timer state | Planning, Exercise Catalog, Sync |
-| History | completed/edited/soft-deleted Sessions | Workout Execution |
+| History | completed/edited/soft-deleted Sessions, Weekly Routine History and notifications | Workout Execution, Planning |
 | Progress | derived volume, estimated 1RM, PR, trends | History |
 | Sync | device ownership, local journal, idempotency, versions, conflict state | Workout Execution, backend API |
 | App Shell | navigation, responsive layouts, shared states, offline indicator | ทุก feature module |
@@ -79,13 +79,13 @@ Plan editing, Exercise mutations, History edits และ Progress queries ต�
 4. UI render จาก local state
 5. Coordinator ส่ง operation, device ID และ expected server version
 6. Server ตรวจ auth, owner device, state transition และ idempotency key
-7. Server commit entity change และ Routine advancement แบบ transaction เมื่อ Finish
+7. Server commit entity change และ weekly Frequency/Coverage invalidation แบบ transaction เมื่อ Finish
 8. Client ลบ journal entry หลัง acknowledgement เท่านั้น
 
 ### Conflict policy
 
 - ไม่มี last-write-wins และไม่มี automatic multi-device merge
-- Non-owner device เป็น read-only
+- Non-owner device เป็น read-only จนกว่าจะยืนยัน online ownership transfer
 - Version mismatch หยุดเฉพาะ queue ของ Session ที่เกี่ยวข้อง
 - เก็บ local conflicting copy จนผู้ใช้ตัดสินใจ
 - Explicit remote abandon ต้องมีคำเตือนและไม่ลบ unsynced local copy จากอุปกรณ์เดิม
@@ -111,24 +111,24 @@ Plan editing, Exercise mutations, History edits และ Progress queries ต�
 
 - Starter Exercise Library 100 ท่าและ Custom Exercise Library พร้อม controlled metadata, search/filter และ archive
 - Workout Template Editor พร้อม targets และ reorder alternatives
-- Routine sequence, weekly frequency และ single Active Routine
+- Flexible Routine Days, weekly frequency default/override และ effective-week activation
 - Today empty/setup state
 
-**Covers:** FR-EX-01–04, FR-PL-01–05, FR-TD-03  
-**Exit criteria:** สร้าง Routine A → B → C และ activate ได้; archive ไม่ทำลาย references; Template validation และ accessibility checks ผ่าน
+**Covers:** FR-EX-01–04, FR-PL-01–06, FR-TD-03
+**Exit criteria:** สร้าง Routine Push/Pull/Legs, เลือก effective week และ lock weekly plan หลัง Session แรกได้; archive ไม่ทำลาย references; Template validation และ accessibility checks ผ่าน
 
 ### M-03 — Today and online Workout Execution (สัปดาห์ 3)
 
 **Deliverables**
 
-- Today resolution, planned/ad-hoc start และ Resume priority
+- Today Frequency/Coverage resolution, recommended Routine Day choices, Routine/ad-hoc start และ Resume priority
 - Template snapshot และ single Active Session
 - Set logging, previous values, session flexibility และ rest timer
 - Exit, Finish, Discard และ Completion Summary
-- Atomic Routine advancement สำหรับ planned completion
+- Idempotent weekly Frequency/Coverage invalidation สำหรับ Routine completion
 
-**Covers:** FR-TD-01–04, FR-AW-01–07, FR-AW-10–11, FR-ST-03  
-**Exit criteria:** Online end-to-end workout flow ผ่าน; planned/ad-hoc/discarded advancement behavior ถูกต้อง; Template edit ไม่กระทบ Session snapshot
+**Covers:** FR-TD-01–05, FR-AW-01–07, FR-AW-10–11, FR-WR-01–02, FR-ST-03
+**Exit criteria:** Online end-to-end workout flow ผ่าน; repeat/ad-hoc/discarded Frequency/Coverage behavior ถูกต้อง; Template edit ไม่กระทบ Session snapshot
 
 ### M-04 — Offline reliability and device ownership (สัปดาห์ 4)
 
@@ -137,7 +137,7 @@ Plan editing, Exercise mutations, History edits และ Progress queries ต�
 - IndexedDB Active Session store และ SyncOperation journal
 - Reload/browser-restart recovery
 - Idempotent retry, version check และ sync status UI
-- Owner-device read-only behavior, conflict state และ explicit abandon policy
+- Owner-device read-only behavior, explicit ownership transfer, conflict state และ explicit abandon policy
 
 **Covers:** FR-AW-02–03, FR-AW-08–09, FR-ST-02, NFR-03–04  
 **Exit criteria:** Offline/reconnect tests ไม่สูญหายหรือสร้าง SetLog ซ้ำ; non-owner mutation ถูกปฏิเสธทั้ง client/server; conflict ไม่ overwrite ข้อมูล
@@ -147,12 +147,14 @@ Plan editing, Exercise mutations, History edits และ Progress queries ต�
 **Deliverables**
 
 - History list, detail, retrospective edit และ soft delete
+- Weekly Routine History, provisional/finalized week results และ zero-session weeks
+- Notification Center พร้อม unread/read/dismissed state และ links ไป weekly detail
 - Progress invalidation หลัง History mutation
 - Exercise trends, volume, estimated 1RM, PR และ source-session links
 - Unit preference และ empty/recalculating/error states
 
-**Covers:** FR-HI-01–05, FR-PR-01–05, FR-ST-01  
-**Exit criteria:** metrics trace กลับ Session ได้; edit/delete คำนวณใหม่ถูกต้อง; warm-up/deleted data ไม่เข้า Progress
+**Covers:** FR-HI-01–05, FR-WR-03–06, FR-PR-01–05, FR-ST-01
+**Exit criteria:** metrics trace กลับ Session ได้; edit/delete คำนวณ Progress/Weekly History ใหม่ถูกต้อง; missed weeks สร้าง notification แยกและ read/dismiss ไม่แก้ History
 
 ### M-06 — Responsive and accessibility QA (สัปดาห์ 7)
 
@@ -163,7 +165,7 @@ Plan editing, Exercise mutations, History edits และ Progress queries ต�
 - Keyboard reorder, focus management, chart alternatives และ reduced motion
 - Shared loading/empty/offline/error/conflict/success states
 
-**Covers:** NFR-01–02, NFR-09 และทุก P-01–P-13  
+**Covers:** NFR-01–02, NFR-09 และทุก P-01–P-15
 **Exit criteria:** Core flows ผ่าน device matrix, keyboard-only test, touch-target audit และ contrast audit
 
 ### M-07 — Release hardening (สัปดาห์ 8)
@@ -182,7 +184,7 @@ Plan editing, Exercise mutations, History edits และ Progress queries ต�
 
 ### Unit tests
 
-- Routine next-index wrap และ planned/ad-hoc advancement
+- Weekly Frequency/Coverage, repeat Day, week boundary และ recommendation rules
 - SetLog validation และ unit conversion
 - Working-set volume, Epley estimated 1RM สำหรับ 1–10 reps และ PR calculation
 - Progress filtering สำหรับ warm-up, discarded และ soft-deleted Sessions
@@ -192,7 +194,9 @@ Plan editing, Exercise mutations, History edits และ Progress queries ต�
 
 - Owner authorization ทุก mutation
 - Template snapshot isolation
-- Atomic Finish + Routine advancement
+- Atomic Finish + weekly result invalidation
+- RoutineWeekPlan lock/effective-week activation และ zero-session materialization
+- Notification read/dismiss isolation จาก Weekly Routine History
 - History edit/delete + Progress invalidation
 - Exercise archive reference integrity
 - Device ownership/version conflict responses
@@ -218,8 +222,9 @@ Plan editing, Exercise mutations, History edits และ Progress queries ต�
 ### End-to-end acceptance
 
 - Initial login/setup → Routine → Today → Active Workout → History → Progress
-- Missed-day ordered sequence A → B → C
-- Ad-hoc Session ไม่เลื่อน Routine
+- Legs-first PPL selection แล้วแนะนำ Push/Pull พร้อมอนุญาต Legs ซ้ำ
+- Monday reset, missed-day History/notifications และ Sunday-start attribution
+- Ad-hoc Session ไม่นับ Weekly Frequency/Coverage
 - Offline logging/recovery/reconnect
 - Non-owner device lock และ conflict explanation
 - Retrospective edit/delete พร้อม metrics refresh
@@ -243,13 +248,13 @@ Plan editing, Exercise mutations, History edits และ Progress queries ต�
 | Future capability | เพิ่มหลัง MVP เพราะ | Architecture preparation ใน MVP |
 | --- | --- | --- |
 | Cardio/mobility metrics | เปลี่ยน set/metric model และ UI | แยก Exercise/Session modules แต่ไม่สร้าง generic engine ล่วงหน้า |
-| Calendar/training blocks | เพิ่ม date rules และ scheduling | Routine sequence ไม่ผูก calendar |
+| Calendar/training blocks | เพิ่ม date rules และ scheduling | Routine Week มี boundary/adherence แต่ไม่มี scheduled weekday/time |
 | Advanced set types/supersets | เพิ่ม execution semantics | เก็บ ordered SessionExercises และ set type ที่ขยายได้ |
 | Automatic progression/coaching | ต้องใช้ trusted rules/data | Progress เป็น derived และ trace กลับ source ได้ |
 | Body metrics/goals | เป็น domain ใหม่ | ไม่รวมใน Workout Session schema |
 | Import/export | ต้องกำหนด stable external contract | ใช้ stable entity IDs ภายในก่อน |
 | Wearables/health platforms | external permissions/sync complexity | Integration layer แยกจาก domains |
-| Cross-device handoff/multi-user | concurrency และ authorization เพิ่มมาก | device ownership/versioning เป็นฐาน แต่ไม่ทำ live merge |
+| Live cross-device merge/multi-user editing | concurrency และ authorization เพิ่มมาก | รองรับ explicit single-writer handoff แล้ว แต่ไม่ทำ live merge |
 
 ## 9. Cross-document traceability
 
@@ -257,15 +262,16 @@ Plan editing, Exercise mutations, History edits และ Progress queries ต�
 | --- | --- | --- | --- | --- |
 | FR-AU-01–03 | UF-01 | P-01, P-02 | M-01 | private login, session expiry, unauthorized request tests |
 | FR-EX-01–04 | UF-02 | P-03, P-04 | M-02 | search/filter, duplicate validation, archive integrity |
-| FR-PL-01–05 | UF-03 | P-05, P-06 | M-02 | Template/Routine validation, snapshot isolation |
-| FR-TD-01–04 | UF-04, UF-05 | P-02, P-07 | M-02, M-03 | resume priority, sequence resolution, ad-hoc behavior |
+| FR-PL-01–06 | UF-03 | P-05, P-06, P-15 | M-02 | Template/Routine validation, effective week, weekly-plan lock |
+| FR-TD-01–05 | UF-04, UF-05 | P-02, P-07 | M-02, M-03 | resume priority, recommendations, repeat/ad-hoc behavior |
 | FR-AW-01–07 | UF-05–07 | P-07, P-08 | M-03 | start/log/timer/finish/discard end-to-end |
 | FR-AW-08–09 | UF-06, UF-08, UF-09 | P-07, P-13 | M-04 | offline reload, idempotent retry, conflict tests |
-| FR-AW-10–11 | UF-07 | P-02, P-07, P-08 | M-03 | lifecycle and Routine advancement tests |
+| FR-AW-10–11 | UF-07 | P-02, P-07, P-08 | M-03 | lifecycle and weekly result attribution tests |
+| FR-WR-01–06 | UF-10, UF-12 | P-05, P-14, P-15 | M-03, M-05 | week boundary, zero/provisional weeks, recalculation, notification state |
 | FR-HI-01–05 | UF-10 | P-09, P-10 | M-05 | edit/delete and invalidation tests |
 | FR-PR-01–05 | UF-07, UF-10, UF-11 | P-08, P-10–P-12 | M-05 | calculation, filtering and source trace tests |
 | FR-ST-01–03 | UF-06, UF-08, UF-09 | P-07, P-13 | M-03–M-05 | unit/timer/sync-state tests |
-| NFR-01–02, NFR-09 | ทุก core flow | P-01–P-13 | M-01, M-06 | device matrix, accessibility and visual audit |
+| NFR-01–02, NFR-09 | ทุก core flow | P-01–P-15 | M-01, M-06 | device matrix, accessibility and visual audit |
 | NFR-03–04 | UF-05–09 | P-02, P-07, P-13 | M-04 | durability, versioning and data-integrity tests |
 | NFR-05–08 | UF-01, UF-08–11 | ทุก protected page | M-01, M-07 | security, logging, backup/restore and maintainability review |
 
@@ -277,6 +283,6 @@ Plan editing, Exercise mutations, History edits และ Progress queries ต�
 2. Flow ทุกตัวอ้าง Page ID ที่มีอยู่ใน Information Architecture
 3. MVP requirement ทุกกลุ่มมี milestone และ primary verification ใน traceability table
 4. คำว่า Routine, Template, Active Session, Completed Session และ owner device ใช้ความหมายเดียวกัน
-5. Ordered sequence, ad-hoc behavior, snapshot, offline boundary และ device ownership ไม่มีข้อกำหนดขัดกัน
+5. Flexible Routine selection, Frequency/Coverage, effective week, ad-hoc behavior, snapshot, offline boundary และ device ownership ไม่มีข้อกำหนดขัดกัน
 6. Future/Out-of-scope capabilities ไม่ปรากฏเป็น M-01–M-07 deliverables
 7. Relative links ระหว่างเอกสารเปิดได้และ heading anchors ที่อ้างมีอยู่จริง

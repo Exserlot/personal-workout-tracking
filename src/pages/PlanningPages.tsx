@@ -39,7 +39,6 @@ import type {
 import {
     eligibleTemplates,
     moveItem,
-    otherRoutines,
     plansPageActions,
     validateRoutineDraft,
     validateWorkoutTemplateDraft,
@@ -47,10 +46,9 @@ import {
 import { PlanningRepositoryError } from "../features/planning/data/PlanningRepository";
 import { ExerciseFilterPopover } from "../features/exercises/components/ExerciseFilterPopover";
 import { ExerciseSelectionItem } from "../features/exercises/components/ExerciseSelectionItem";
-import { useWorkoutRepository } from "../features/workout/WorkoutRepositoryContext";
-import { getDeviceId } from "../features/workout/data/deviceIdentity";
-import type { WorkoutSession } from "../features/workout/domain/workout";
 import { readNumberInput } from "../lib/numberInput";
+import { useRoutineTrackingRepository } from "../features/routine-tracking/RoutineTrackingRepositoryContext";
+import type { CurrentRoutineWeek } from "../features/routine-tracking/domain/routineTracking";
 
 const blankTemplate: WorkoutTemplateDraft = {
     name: "",
@@ -151,9 +149,8 @@ function OverflowMenu({
 
 export function PlansPage() {
     const repository = usePlanningRepository();
-    const workoutRepository = useWorkoutRepository();
+    const routineTrackingRepository = useRoutineTrackingRepository();
     const navigate = useNavigate();
-    const deviceId = useMemo(() => getDeviceId(), []);
     const [templates, setTemplates] = useState<WorkoutTemplateSummary[]>([]);
     const [routines, setRoutines] = useState<Routine[]>([]);
     const [loading, setLoading] = useState(true);
@@ -164,60 +161,40 @@ export function PlansPage() {
     const [editingRoutine, setEditingRoutine] = useState<Routine | null>(null);
     const [routineEditorOpen, setRoutineEditorOpen] = useState(false);
     const routineBaselineRef = useRef("");
+    const frequencyManuallyEditedRef = useRef(false);
     const [routineError, setRoutineError] = useState("");
     const [savingRoutine, setSavingRoutine] = useState(false);
-    const [activeSession, setActiveSession] = useState<WorkoutSession | null>(null);
-    const [activeSessionCheck, setActiveSessionCheck] = useState<
-        "checking" | "ready" | "error"
-    >("checking");
-
-    const refreshActiveSession = useCallback(async () => {
-        setActiveSessionCheck("checking");
-        try {
-            await workoutRepository.registerDevice(deviceId);
-            setActiveSession(await workoutRepository.getActiveSession(deviceId));
-            setActiveSessionCheck("ready");
-        } catch {
-            // Planning data can still be viewed when the workout check is unavailable.
-            // Keep editing disabled until the server can confirm there is no Active Session.
-            setActiveSession(null);
-            setActiveSessionCheck("error");
-        }
-    }, [deviceId, workoutRepository]);
+    const [currentWeek, setCurrentWeek] = useState<CurrentRoutineWeek | null>(null);
+    const [activationRequest, setActivationRequest] = useState<{ routine: Routine | null; deactivate: boolean } | null>(null);
+    const [activationTiming, setActivationTiming] = useState<"CURRENT" | "NEXT">("CURRENT");
+    const [activating, setActivating] = useState(false);
 
     const load = useCallback(async () => {
         setLoading(true);
         setError("");
         try {
-            const [nextTemplates, nextRoutines] = await Promise.all([
+            const [nextTemplates, nextRoutines, nextCurrentWeek] = await Promise.all([
                 repository.listTemplates(),
                 repository.listRoutines(),
+                routineTrackingRepository.getCurrentWeek(),
             ]);
             setTemplates(nextTemplates);
             setRoutines(nextRoutines);
+            setCurrentWeek(nextCurrentWeek);
         } catch (loadError) {
             setError(errorMessage(loadError));
         } finally {
             setLoading(false);
         }
-    }, [repository]);
+    }, [repository, routineTrackingRepository]);
 
     useEffect(() => {
         void load();
     }, [load]);
 
-    useEffect(() => {
-        void refreshActiveSession();
-    }, [refreshActiveSession]);
-
     function beginRoutine(routine?: Routine) {
-        if (routine?.isActive && activeSession) {
-            setNotice(
-                "แก้ไข Active Routine ไม่ได้ขณะมี Active Session กรุณา Finish หรือ Discard Workout ก่อน",
-            );
-            return;
-        }
         const nextDraft = routine ? routineToDraft(routine) : { ...blankRoutine, days: [] };
+        frequencyManuallyEditedRef.current = Boolean(routine);
         setEditingRoutine(routine ?? null);
         setRoutineEditorOpen(true);
         setRoutineDraft(nextDraft);
@@ -227,6 +204,7 @@ export function PlansPage() {
     }
 
     function addRoutineDay() {
+        if (routineDraft.days.length >= 7) return;
         const available = eligibleTemplates(templates)[0];
         if (!available) return;
         const day: RoutineDayDraft = {
@@ -237,10 +215,17 @@ export function PlansPage() {
             label: `Day ${routineDraft.days.length + 1}`,
             notes: "",
         };
-        setRoutineDraft((current) => ({
-            ...current,
-            days: [...current.days, day],
-        }));
+        setRoutineDraft((current) => {
+            const days = [...current.days, day];
+            return { ...current, days, weeklyFrequencyTarget: frequencyManuallyEditedRef.current ? current.weeklyFrequencyTarget : days.length };
+        });
+    }
+
+    function removeRoutineDay(clientId: string) {
+        setRoutineDraft((current) => {
+            const days = current.days.filter((item) => item.clientId !== clientId);
+            return { ...current, days, weeklyFrequencyTarget: frequencyManuallyEditedRef.current ? current.weeklyFrequencyTarget : Math.max(1, days.length) };
+        });
     }
 
     async function saveRoutine(event: React.FormEvent<HTMLFormElement>) {
@@ -278,32 +263,28 @@ export function PlansPage() {
         }
     }
 
-    async function activate(routine: Routine) {
-        setNotice("");
-        try {
-            await repository.activateRoutine(routine.id, routine.revision);
-            setNotice("เปิดใช้งาน Routine แล้ว");
-            await load();
-        } catch (activateError) {
-            setError(errorMessage(activateError));
-        }
+    function activate(routine: Routine) {
+        setActivationTiming(currentWeek?.currentPlan?.lockedAt ? "NEXT" : "CURRENT");
+        setActivationRequest({ routine, deactivate: false });
     }
 
-    async function deactivate(routine: Routine) {
-        if (
-            !window.confirm(
-                `ปิดใช้งาน Routine “${routine.name}”? หน้า Today จะไม่มีแผนถัดไปจนกว่าจะ Activate Routine อีกครั้ง`,
-            )
-        )
-            return;
-        setNotice("");
+    function deactivate() {
+        setActivationTiming(currentWeek?.currentPlan?.lockedAt ? "NEXT" : "CURRENT");
+        setActivationRequest({ routine: null, deactivate: true });
+    }
+
+    async function confirmActivation() {
+        if (!activationRequest) return;
+        setActivating(true); setNotice(""); setError("");
         try {
-            await repository.deactivateRoutine(routine.id, routine.revision);
-            setNotice("ปิดใช้งาน Routine แล้ว");
+            const effectiveWeek = activationRequest.deactivate
+                ? await repository.deactivateRoutine(activationTiming)
+                : await repository.activateRoutine(activationRequest.routine!.id, activationRequest.routine!.revision, activationTiming);
+            setNotice(`${activationRequest.deactivate ? "ปิดใช้งาน" : "เปิดใช้งาน"} Routine ตั้งแต่สัปดาห์ ${effectiveWeek}`);
+            setActivationRequest(null);
             await load();
-        } catch (deactivateError) {
-            setError(errorMessage(deactivateError));
-        }
+        } catch (activationError) { setError(errorMessage(activationError)); }
+        finally { setActivating(false); }
     }
 
     async function archiveRoutine(routine: Routine) {
@@ -338,14 +319,13 @@ export function PlansPage() {
         }
     }
 
-    const activeRoutine = routines.find((routine) => routine.isActive);
+    const activeRoutine = routines.find((routine) => routine.id === currentWeek?.currentPlan?.routineId);
     const availableTemplates = eligibleTemplates(templates);
     const activeTemplates = templates.filter((template) => !template.archivedAt);
     const archivedTemplates = templates.filter((template) => Boolean(template.archivedAt));
-    const otherSavedRoutines = otherRoutines(routines);
-    const pageActions = plansPageActions(templates, routines);
+    const otherSavedRoutines = routines.filter((routine) => !routine.archivedAt && routine.id !== activeRoutine?.id);
+    const pageActions = plansPageActions(templates, routines, activeRoutine?.id);
     const routineDirty = routineEditorOpen && JSON.stringify(routineDraft) !== routineBaselineRef.current;
-    const activeRoutineActionsDisabled = activeSessionCheck !== "ready" || Boolean(activeSession);
 
     useEffect(() => {
         if (!routineDirty) return;
@@ -407,6 +387,27 @@ export function PlansPage() {
                 )
             }
         >
+            <ModalDialog
+                open={Boolean(activationRequest)}
+                onClose={() => { if (!activating) setActivationRequest(null); }}
+                title={activationRequest?.deactivate ? "ปิดใช้งาน Routine เมื่อไร?" : `เริ่ม ${activationRequest?.routine?.name ?? "Routine"} เมื่อไร?`}
+                description="Routine Week นับวันจันทร์ถึงวันอาทิตย์ และเมื่อเริ่ม Session แรกแล้วจะล็อกสมาชิกของสัปดาห์นั้น"
+            >
+                <div className="mt-6 grid gap-3">
+                    <label className={`border p-4 ${activationTiming === "CURRENT" ? "border-accent" : "border-line"}`}>
+                        <input type="radio" name="activation-week" value="CURRENT" checked={activationTiming === "CURRENT"} disabled={Boolean(currentWeek?.currentPlan?.lockedAt)} onChange={() => setActivationTiming("CURRENT")} />
+                        <span className="ml-3 font-semibold">สัปดาห์นี้</span>
+                        <span className="mt-1 block pl-7 text-sm text-ink-muted">มีผล {currentWeek?.currentWeekStart}{currentWeek?.currentPlan?.lockedAt ? " · เลือกไม่ได้เพราะ Routine Week เริ่มแล้ว" : ""}</span>
+                    </label>
+                    <label className={`border p-4 ${activationTiming === "NEXT" ? "border-accent" : "border-line"}`}>
+                        <input type="radio" name="activation-week" value="NEXT" checked={activationTiming === "NEXT"} onChange={() => setActivationTiming("NEXT")} />
+                        <span className="ml-3 font-semibold">สัปดาห์หน้า</span>
+                        <span className="mt-1 block pl-7 text-sm text-ink-muted">มีผล {currentWeek?.nextWeekStart}</span>
+                    </label>
+                </div>
+                <div className="mt-6 flex justify-end gap-2"><Button variant="quiet" onClick={() => setActivationRequest(null)} disabled={activating}>ยกเลิก</Button><Button variant="primary" onClick={() => void confirmActivation()} disabled={activating}>{activating ? "กำลังบันทึก…" : "ยืนยัน"}</Button></div>
+            </ModalDialog>
+            {currentWeek?.scheduledActivation ? <p className="mb-6 border-l-2 border-accent bg-surface px-4 py-3 text-sm text-ink-secondary">Pending Routine Change: {currentWeek.scheduledActivation.isDeactivation ? "ปิดใช้งาน Routine" : currentWeek.scheduledActivation.routineName} มีผล {currentWeek.scheduledActivation.effectiveWeekStart}</p> : null}
             {notice ? (
                 <p
                     role="status"
@@ -452,18 +453,11 @@ export function PlansPage() {
                             action={
                                 activeRoutine ? (
                                     <div className="flex flex-wrap gap-2">
+                                        <Link to="/routine-history" className={buttonStyles({ variant: "quiet", size: "compact" })}>Weekly History</Link>
                                         <Button
                                             variant="secondary"
                                             size="compact"
                                             aria-label="แก้ไข Active Routine"
-                                            title={
-                                                activeSession
-                                                    ? "Finish หรือ Discard Active Session ก่อนแก้ไข Routine"
-                                                    : activeSessionCheck === "error"
-                                                        ? "ยังตรวจสอบ Active Session ไม่สำเร็จ กรุณาลองใหม่"
-                                                        : undefined
-                                            }
-                                            disabled={activeRoutineActionsDisabled}
                                             onClick={() => beginRoutine(activeRoutine)}
                                         >
                                             <Icon name="edit" className="h-4 w-4" />
@@ -472,8 +466,7 @@ export function PlansPage() {
                                         <Button
                                             variant="secondary"
                                             size="compact"
-                                            disabled={activeRoutineActionsDisabled}
-                                            onClick={() => void deactivate(activeRoutine)}
+                                            onClick={deactivate}
                                         >
                                             Inactive
                                         </Button>
@@ -482,41 +475,7 @@ export function PlansPage() {
                             }
                             showTopRule={false}
                         />
-                        {activeRoutine && activeSession ? (
-                            <div className="mt-4 border-l-2 border-warning bg-surface px-4 py-3 text-sm">
-                                <p className="font-semibold text-warning">
-                                    มี Active Session อยู่
-                                </p>
-                                <p className="mt-1 text-ink-secondary">
-                                    แก้ไข Active Routine ได้หลังจากจบหรือยกเลิก Workout ปัจจุบัน
-                                </p>
-                                <Link
-                                    to="/workout/active"
-                                    className={buttonStyles({
-                                        variant: "quiet",
-                                        size: "compact",
-                                        className: "mt-2",
-                                    })}
-                                >
-                                    กลับไป Workout
-                                </Link>
-                            </div>
-                        ) : null}
-                        {activeRoutine && activeSessionCheck === "error" ? (
-                            <div className="mt-4 border-l-2 border-error bg-surface px-4 py-3 text-sm text-error">
-                                <p>
-                                    ยังตรวจสอบ Active Session ไม่สำเร็จ จึงปิดการแก้ไขไว้ชั่วคราว
-                                </p>
-                                <Button
-                                    variant="quiet"
-                                    size="compact"
-                                    className="mt-2"
-                                    onClick={() => void refreshActiveSession()}
-                                >
-                                    ลองตรวจสอบอีกครั้ง
-                                </Button>
-                            </div>
-                        ) : null}
+                        {activeRoutine && currentWeek?.currentPlan?.lockedAt ? <p className="mt-4 border-l-2 border-warning bg-surface px-4 py-3 text-sm text-ink-secondary">Routine Week นี้เริ่มแล้ว การแก้ไข Routine จะถูกตั้งเป็น Pending Routine Change และมีผลสัปดาห์หน้า</p> : null}
                         {activeRoutine ? (
                             <ol className="mt-5 border-t border-line">
                                 {activeRoutine.days.map((day, index) => (
@@ -526,8 +485,7 @@ export function PlansPage() {
                                     >
                                         <span
                                             className={
-                                                index ===
-                                                activeRoutine.nextWorkoutIndex
+                                                currentWeek?.currentPlan?.days.find((item) => item.routineDayId === day.id)?.completedCount === 0
                                                     ? "text-accent"
                                                     : "text-ink-muted"
                                             }
@@ -597,11 +555,7 @@ export function PlansPage() {
                                                     ครั้ง/สัปดาห์
                                                 </p>
                                             </div>
-                                            {routine.isActive ? (
-                                                <span className="text-xs font-semibold uppercase tracking-[0.08em] text-accent">
-                                                    Active
-                                                </span>
-                                            ) : null}
+                                            {currentWeek?.scheduledActivation?.routineId === routine.id ? <span className="text-xs font-semibold uppercase tracking-[0.08em] text-accent">Next week</span> : null}
                                         </div>
                                         <div className="flex flex-wrap gap-2 tablet:justify-end">
                                             <Button
@@ -616,7 +570,7 @@ export function PlansPage() {
                                             <Button
                                                 variant="secondary"
                                                 size="compact"
-                                                onClick={() => void activate(routine)}
+                                                onClick={() => activate(routine)}
                                             >
                                                 Activate
                                             </Button>
@@ -754,12 +708,13 @@ export function PlansPage() {
                                         value={
                                             routineDraft.weeklyFrequencyTarget
                                         }
-                                        onChange={(event) =>
+                                        onChange={(event) => {
+                                            frequencyManuallyEditedRef.current = true;
                                             setRoutineDraft({
                                                 ...routineDraft,
                                                 weeklyFrequencyTarget: Number(readNumberInput(event.currentTarget)),
-                                            })
-                                        }
+                                            });
+                                        }}
                                         unit="ครั้ง"
                                     />
                                 </div>
@@ -773,7 +728,7 @@ export function PlansPage() {
                                             size="compact"
                                             type="button"
                                             onClick={addRoutineDay}
-                                            disabled={availableTemplates.length === 0}
+                                            disabled={availableTemplates.length === 0 || routineDraft.days.length >= 7}
                                         >
                                             เพิ่มวัน
                                         </Button>
@@ -949,7 +904,7 @@ export function PlansPage() {
                                                             </Button>
                                                             <OverflowMenu label={`เมนูวัน ${day.label || index + 1}`}>
                                                                 {(close) => (
-                                                                    <Button variant="destructive" fullWidth className="justify-start" type="button" onClick={() => { close(); setRoutineDraft({ ...routineDraft, days: routineDraft.days.filter((item) => item.clientId !== day.clientId) }); }}>
+                                                                    <Button variant="destructive" fullWidth className="justify-start" type="button" onClick={() => { close(); removeRoutineDay(day.clientId); }}>
                                                                         <Icon name="trash" className="h-5 w-5" />
                                                                         ลบวัน
                                                                     </Button>
@@ -1318,11 +1273,6 @@ export function TemplateEditorPage() {
             eyebrow="P-06 · TEMPLATE EDITOR"
             title={isNew ? "สร้าง Workout Template" : "แก้ไข Workout Template"}
             description="กำหนดชื่อ ท่าที่ใช้ และเป้าหมายการฝึกของแต่ละท่า"
-            action={
-                <Button variant="secondary" onClick={cancel}>
-                    กลับ Plans
-                </Button>
-            }
         >
             {notice ? (
                 <p

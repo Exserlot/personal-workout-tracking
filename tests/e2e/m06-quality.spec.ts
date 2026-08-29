@@ -14,6 +14,9 @@ const authenticatedRoutes = [
   "/progress",
   "/progress/missing-exercise",
   "/settings",
+  "/notifications",
+  "/routine-history",
+  "/routine-history/missing-week",
 ];
 
 async function authenticate(page: Page) {
@@ -40,7 +43,7 @@ test.describe("M-06 responsive quality gate", () => {
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
     });
 
-    test(`P-02–P-13 have no horizontal overflow at ${width}px`, async ({ page }) => {
+    test(`authenticated pages have no horizontal overflow at ${width}px`, async ({ page }) => {
       test.setTimeout(90_000);
       await authenticate(page);
       await page.setViewportSize({ width, height: 900 });
@@ -63,6 +66,10 @@ test.describe("M-06 responsive quality gate", () => {
     await page.keyboard.press("Enter");
     await expect(page.locator("main#main-content")).toBeFocused();
     const menu = page.getByRole("button", { name: "เปิดเมนู" });
+    await expect(menu).toHaveCSS("width", "44px");
+    await expect(menu).toHaveCSS("height", "44px");
+    await expect(menu.locator("svg")).toHaveCSS("width", "24px");
+    await expect(menu.locator("svg")).toHaveCSS("height", "24px");
     await menu.focus();
     await menu.press("Enter");
     const drawer = page.getByRole("dialog", { name: "เมนูทั้งหมด" });

@@ -6,8 +6,8 @@ import { EmptyState } from "../components/ui/EmptyState";
 import { buttonStyles } from "../components/ui/buttonStyles";
 import { usePlanningRepository } from "../features/planning/PlanningRepositoryContext";
 import type {
-  ActiveRoutinePreview,
   TemplateExercise,
+  WorkoutTemplate,
   WorkoutTemplateSummary,
 } from "../features/planning/domain/planning";
 import { PlanningRepositoryError } from "../features/planning/data/PlanningRepository";
@@ -17,6 +17,10 @@ import { useAuth } from "../features/auth/AuthContext";
 import { loadLatestSessionCache } from "../features/workout/data/activeSessionCache";
 import { listSyncOperations } from "../features/workout/data/workoutSyncStore";
 import { useWorkoutSync } from "../features/workout/WorkoutSyncContext";
+import { useRoutineTrackingRepository } from "../features/routine-tracking/RoutineTrackingRepositoryContext";
+import { RoutineTrackingRepositoryError } from "../features/routine-tracking/data/RoutineTrackingRepository";
+import type { RoutineWeekDayStatus, RoutineWeekSummary } from "../features/routine-tracking/domain/routineTracking";
+import { groupRoutineWeekDays } from "../features/routine-tracking/domain/routineTracking";
 import { getDeviceId } from "../features/workout/data/deviceIdentity";
 import type {
   PreviousExerciseValues,
@@ -34,9 +38,16 @@ import {
 type LoadStatus = "initial" | "refreshing" | "ready" | "error";
 type SessionSource = "server" | "cache" | null;
 
+interface PlannedRoutinePreview {
+  week: RoutineWeekSummary;
+  day: RoutineWeekDayStatus;
+  template: WorkoutTemplate;
+}
+
 function errorMessage(error: unknown, fallback: string) {
   return error instanceof WorkoutRepositoryError ||
-    error instanceof PlanningRepositoryError
+    error instanceof PlanningRepositoryError ||
+    error instanceof RoutineTrackingRepositoryError
     ? error.message
     : fallback;
 }
@@ -124,6 +135,7 @@ function ExerciseRows({
 export function TodayPage() {
   const auth = useAuth();
   const planningRepository = usePlanningRepository();
+  const routineTrackingRepository = useRoutineTrackingRepository();
   const workoutRepository = useWorkoutRepository();
   const syncCoordinator = useWorkoutSync();
   const navigate = useNavigate();
@@ -137,7 +149,7 @@ export function TodayPage() {
   const [terminalSession, setTerminalSession] = useState<WorkoutSession | null>(null);
   const [terminalAction, setTerminalAction] = useState<"finish_session" | "discard_session" | null>(null);
   const [sessionSource, setSessionSource] = useState<SessionSource>(null);
-  const [preview, setPreview] = useState<ActiveRoutinePreview | null>(null);
+  const [preview, setPreview] = useState<PlannedRoutinePreview | null>(null);
   const [previousValues, setPreviousValues] = useState<Record<string, PreviousExerciseValues>>({});
   const [showAllExercises, setShowAllExercises] = useState(false);
   const [starting, setStarting] = useState<string | null>(null);
@@ -239,11 +251,22 @@ export function TodayPage() {
     setTerminalSession(null);
     setSessionSource(null);
     try {
-      const nextPreview = await planningRepository.getActiveRoutinePreview();
+      const current = await routineTrackingRepository.getCurrentWeek();
       if (!isCurrent()) return;
+      const week = current.currentPlan;
+      if (!week || week.days.length === 0) {
+        setPreview(null);
+        setLoadStatus("ready");
+        return;
+      }
+      const groups = groupRoutineWeekDays(week.days);
+      const day = groups.recommended[0] ?? groups.repeat[0];
+      if (!day?.templateId) throw new PlanningRepositoryError("not-found", "Template ของ Routine Day นี้ไม่พร้อมใช้งาน");
+      const template = await planningRepository.getTemplate(day.templateId);
+      if (!template) throw new PlanningRepositoryError("not-found", "ไม่พบ Template ของ Routine Day");
+      const nextPreview = { week, day, template };
       setPreview(nextPreview);
       setLoadStatus("ready");
-      if (!nextPreview) return;
       const exerciseIds = nextPreview.template.exercises.map((exercise) => exercise.exerciseId);
       void workoutRepository.getPreviousValues(exerciseIds).then((values) => {
         if (isCurrent()) setPreviousValues(values);
@@ -254,7 +277,7 @@ export function TodayPage() {
       setLoadError(errorMessage(error, "โหลดแผนถัดไปไม่สำเร็จ"));
       setLoadStatus("error");
     }
-  }, [deviceId, planningRepository, userId, workoutRepository]);
+  }, [deviceId, planningRepository, routineTrackingRepository, userId, workoutRepository]);
 
   useEffect(() => {
     void load();
@@ -298,6 +321,21 @@ export function TodayPage() {
     setAdHocOpen(false);
   }, []);
 
+  async function selectRoutineDay(day: RoutineWeekDayStatus) {
+    if (!preview || !day.templateId || starting) return;
+    setStartError("");
+    try {
+      const template = await planningRepository.getTemplate(day.templateId);
+      if (!template) throw new PlanningRepositoryError("not-found", "ไม่พบ Template ของ Routine Day");
+      setPreview({ week: preview.week, day, template });
+      const values = await workoutRepository.getPreviousValues(template.exercises.map((exercise) => exercise.exerciseId));
+      setPreviousValues(values);
+      setShowAllExercises(false);
+    } catch (error) {
+      setStartError(errorMessage(error, "โหลด Routine Day ไม่สำเร็จ"));
+    }
+  }
+
   async function startPlanned() {
     if (!preview || starting) return;
     setStarting("planned");
@@ -306,8 +344,8 @@ export function TodayPage() {
       const session = await workoutRepository.startPlanned({
         sessionId: crypto.randomUUID(),
         deviceId,
-        routineId: preview.routineId,
-        routineRevision: preview.routineRevision,
+        routineWeekPlanId: preview.week.id,
+        routineWeekPlanDayId: preview.day.id,
         templateRevision: preview.template.revision,
       });
       navigate(`/workout/active?session=${session.id}`);
@@ -382,8 +420,9 @@ export function TodayPage() {
     : activeSession
     ? "กลับไปทำ Session ที่ยังดำเนินอยู่"
     : preview
-      ? `${preview.routineName} · ${preview.dayLabel}`
+      ? `${preview.week.routineName} · ${preview.day.dayLabel}`
       : "จัดการ Routine หรือเริ่มการฝึกแบบอิสระ";
+  const dayGroups = preview ? groupRoutineWeekDays(preview.week.days) : null;
 
   return (
     <PageFrame
@@ -432,7 +471,7 @@ export function TodayPage() {
                   ? "ข้อมูลล่าสุดที่เก็บไว้บนอุปกรณ์นี้"
                   : ownerDevice
                     ? "Session นี้พร้อมทำต่อบนอุปกรณ์นี้"
-                    : "Session นี้เริ่มจากอุปกรณ์อื่นและเปิดได้แบบอ่านอย่างเดียว"}
+                    : "Session นี้เริ่มจากอุปกรณ์อื่น เปิดดูหรือย้ายมาทำต่อบนเครื่องนี้ได้"}
               </p>
               <Link
                 to={`/workout/active?session=${activeSession.id}`}
@@ -443,7 +482,7 @@ export function TodayPage() {
                   className: "mt-6 tablet:w-auto",
                 })}
               >
-                {cached ? "เปิด Workout" : ownerDevice ? "Resume Workout" : "ดูแบบอ่านอย่างเดียว"}
+                {cached ? "เปิด Workout" : ownerDevice ? "Resume Workout" : "เปิดเพื่อทำต่อบนเครื่องนี้"}
               </Link>
 
               {loadStatus === "refreshing" ? (
@@ -456,7 +495,7 @@ export function TodayPage() {
               ) : null}
               {!cached && !ownerDevice ? (
                 <div className="mt-4 border-l-2 border-warning pl-4 text-sm leading-6 text-ink-secondary">
-                  กลับไปยังอุปกรณ์ที่เริ่ม Session เพื่อบันทึกหรือจบ Workout
+                  การย้ายสิทธิ์ต้องออนไลน์ และเครื่องเดิมจะเปลี่ยนเป็นอ่านอย่างเดียว
                 </div>
               ) : null}
 
@@ -505,7 +544,7 @@ export function TodayPage() {
             <p className="text-xs font-semibold tracking-[0.08em] text-accent">NEXT WORKOUT</p>
             <h2 className="mt-3 text-h1 text-balance">{preview.template.name}</h2>
             <p className="mt-3 text-base leading-7 text-ink-secondary">
-              {preview.routineName} · {preview.dayLabel}
+              {preview.week.routineName} · {preview.day.dayLabel}
             </p>
             <div className="mt-6 flex flex-col gap-2 tablet:flex-row tablet:flex-wrap">
               <Button
@@ -529,18 +568,16 @@ export function TodayPage() {
 
             <div className="mt-8 grid grid-cols-3 border-t border-line">
               <div className="py-4 pr-3">
-                <p className="text-xs text-ink-muted">ท่าฝึก</p>
-                <p className="mt-2 text-h3 tabular-nums">{preview.template.exercises.length}</p>
+                <p className="text-xs text-ink-muted">Frequency</p>
+                <p className="mt-2 text-h3 tabular-nums">{preview.week.frequencyActual}/{preview.week.frequencyTarget}</p>
               </div>
               <div className="border-l border-line-subtle px-3 py-4">
-                <p className="text-xs text-ink-muted">เซ็ต</p>
-                <p className="mt-2 text-h3 tabular-nums">
-                  {preview.template.exercises.reduce((total, exercise) => total + exercise.prescriptions.length, 0)}
-                </p>
+                <p className="text-xs text-ink-muted">Coverage</p>
+                <p className="mt-2 text-h3 tabular-nums">{preview.week.coverageActual}/{preview.week.coverageTarget}</p>
               </div>
               <div className="border-l border-line-subtle py-4 pl-3">
-                <p className="text-xs text-ink-muted">ลำดับ</p>
-                <p className="mt-2 text-h3 tabular-nums">{preview.nextWorkoutIndex + 1}/{preview.dayCount}</p>
+                <p className="text-xs text-ink-muted">ท่าฝึก</p>
+                <p className="mt-2 text-h3 tabular-nums">{preview.template.exercises.length}</p>
               </div>
             </div>
 
@@ -580,17 +617,28 @@ export function TodayPage() {
 
           <aside className="col-span-4 mt-10 border-t border-line pt-5 tablet:col-span-3 tablet:mt-0 desktop:col-span-4">
             <p className="text-xs font-semibold tracking-[0.08em] text-ink-muted">ROUTINE CONTEXT</p>
-            <h3 className="mt-3 text-h3">{preview.routineName}</h3>
+            <h3 className="mt-3 text-h3">{preview.week.routineName}</h3>
             <dl className="mt-5 grid grid-cols-2 gap-4 text-sm tablet:grid-cols-1">
               <div>
                 <dt className="text-ink-muted">วันที่กำลังจะฝึก</dt>
-                <dd className="mt-1 text-xl font-semibold">{preview.dayLabel}</dd>
+                <dd className="mt-1 text-xl font-semibold">{preview.day.dayLabel}</dd>
               </div>
               <div>
                 <dt className="text-ink-muted">เป้าหมายต่อสัปดาห์</dt>
-                <dd className="mt-1 text-xl font-semibold tabular-nums">{preview.weeklyFrequencyTarget} ครั้ง</dd>
+                <dd className="mt-1 text-xl font-semibold tabular-nums">{preview.week.frequencyActual}/{preview.week.frequencyTarget} ครั้ง</dd>
               </div>
             </dl>
+            {dayGroups ? <div className="mt-6 space-y-5 border-t border-line pt-5">
+              <div>
+                <p className="text-xs font-semibold tracking-[0.08em] text-accent">RECOMMENDED</p>
+                <div className="mt-2 grid gap-2">{dayGroups.recommended.map((day) => <button key={day.id} type="button" className={`min-h-11 border px-3 py-2 text-left text-sm ${preview.day.id === day.id ? "border-accent text-accent" : "border-line text-ink"}`} onClick={() => void selectRoutineDay(day)}>{day.dayLabel}<span className="block text-xs text-ink-muted">ยังไม่ครอบคลุมสัปดาห์นี้</span></button>)}</div>
+                {dayGroups.recommended.length === 0 ? <p className="mt-2 text-sm text-success">Coverage ครบแล้ว คุณยังเลือกเล่นซ้ำได้</p> : null}
+              </div>
+              {dayGroups.repeat.length ? <div>
+                <p className="text-xs font-semibold tracking-[0.08em] text-ink-muted">REPEAT</p>
+                <div className="mt-2 grid gap-2">{dayGroups.repeat.map((day) => <button key={day.id} type="button" className={`min-h-11 border px-3 py-2 text-left text-sm ${preview.day.id === day.id ? "border-accent text-accent" : "border-line text-ink"}`} onClick={() => void selectRoutineDay(day)}>{day.dayLabel}<span className="block text-xs text-ink-muted">เล่นแล้ว {day.completedCount} ครั้ง</span></button>)}</div>
+              </div> : null}
+            </div> : null}
             <Link
               to="/plans"
               className={buttonStyles({ variant: "secondary", fullWidth: true, className: "mt-6" })}

@@ -41,22 +41,19 @@ jobs:
       SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT }}
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 11.16.0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm typecheck && pnpm lint && pnpm test && pnpm build && pnpm check:bundle
-      - run: pnpm exec supabase link --project-ref "${{ vars.SUPABASE_PROJECT_ID }}" --password "$SUPABASE_DB_PASSWORD"
-      - run: pnpm exec supabase migration list --linked
-      - run: pnpm exec supabase db push --linked
-      - run: pnpm exec vercel pull --yes --environment=production --token="${{ secrets.VERCEL_TOKEN }}"
-      - run: pnpm exec vercel build --prod --token="${{ secrets.VERCEL_TOKEN }}"
+          cache: npm
+      - run: npm ci
+      - run: npm run quality
+      - run: npx --no-install supabase link --project-ref "${{ vars.SUPABASE_PROJECT_ID }}" --password "$SUPABASE_DB_PASSWORD"
+      - run: npx --no-install supabase migration list --linked
+      - run: npx --no-install supabase db push --linked
+      - run: npx --no-install vercel pull --yes --environment=production --token="${{ secrets.VERCEL_TOKEN }}"
+      - run: npx --no-install vercel build --prod --token="${{ secrets.VERCEL_TOKEN }}"
       - id: deploy
-        run: echo "url=$(pnpm exec vercel deploy --prebuilt --prod --token='${{ secrets.VERCEL_TOKEN }}')" >> "$GITHUB_OUTPUT"
+        run: echo "url=$(npx --no-install vercel deploy --prebuilt --prod --token='${{ secrets.VERCEL_TOKEN }}')" >> "$GITHUB_OUTPUT"
       - name: Smoke production shell
         run: |
           curl --fail --retry 5 "${{ steps.deploy.outputs.url }}/login" | grep 'id="root"'

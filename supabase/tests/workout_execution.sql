@@ -97,10 +97,9 @@ update public.workout_templates set name = 'Changed Plan' where id = 'bbbbbbbb-b
 set local role authenticated;
 select is((select template_name_snapshot from public.workout_sessions where id = '22222222-2222-2222-2222-222222222222'), 'M03 Push', 'Template edits do not change Session snapshot');
 
-select throws_ok(
+select lives_ok(
   $$update public.routines set name = 'Blocked Routine' where id = 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee'$$,
-  'active_session_blocks_routine_change',
-  'Active Routine edits are blocked while a Session is active'
+  'Routine definition edits are allowed while the Session snapshot remains stable'
 );
 
 select lives_ok(
@@ -108,7 +107,7 @@ select lives_ok(
   'Owner can Finish the Session'
 );
 select is((select status from public.workout_sessions where id = '22222222-2222-2222-2222-222222222222'), 'COMPLETED', 'Finish changes Session status');
-select is((select next_workout_index from public.routines where id = 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee'), 0, 'Single-day Routine wraps after completion');
+select is((select next_workout_index from public.routines where id = 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee'), 0, 'Finish no longer writes the legacy Routine pointer');
 
 select * from finish();
 rollback;

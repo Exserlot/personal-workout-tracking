@@ -1,12 +1,12 @@
 # Personal Workout Tracking Web App — Project Roadmap Tracker
 
-**สถานะล่าสุด:** 16 สิงหาคม 2026
+**สถานะล่าสุด:** 29 สิงหาคม 2026
 
 **Baseline:** commit `169036f`
 
-**Current focus:** M-07A — Staging provisioning and smoke validation
+**Current focus:** M-08 verification and production migration
 
-**MVP target:** M-01 ถึง M-07 ผ่าน Definition of Done
+**MVP target:** M-01 ถึง M-08 ผ่าน Definition of Done
 
 เอกสารนี้เป็น living roadmap สำหรับติดตามงานตั้งแต่เริ่มโครงการจนพร้อมใช้งานจริง ส่วนรายละเอียดสถาปัตยกรรมและเหตุผลของแต่ละ milestone ให้อ้างอิง [Development Roadmap](development-roadmap.md)
 
@@ -41,7 +41,7 @@
 - Active Workout ต้องทนต่อ refresh, browser restart และ network interruption
 - MVP ใช้ Supabase, relational data, authenticated RLS และ modular monolith
 
-MVP ครอบคลุม Exercise Library, Workout Templates, Routine, Today, Active Workout, History, Basic Progress, Settings/Sync visibility, responsive UX และ release operations
+MVP ครอบคลุม Exercise Library, Workout Templates, flexible weekly Routine, Weekly Frequency/Coverage, Today, Active Workout, Workout/Weekly Routine History, in-app Notification Center, Basic Progress, Settings/Sync visibility, responsive UX และ release operations
 
 นอก MVP: cardio-specific tracking, calendar scheduling, coaching, live multi-device editing, social features, wearable integrations และ ExerciseDB media integration
 
@@ -57,21 +57,22 @@ MVP ครอบคลุม Exercise Library, Workout Templates, Routine, Today
 | M-05A Workout History | `DONE` | Completed Session list/detail/edit/delete plus snapshot hardening | M-03, M-04 contracts |
 | M-05B Basic Progress | `DONE` | Live volume, e1RM, 3 PR types และ Exercise trends | M-05A |
 | M-06 Responsive & Accessibility QA | `PARTIAL` | Automated responsive/Axe/cross-browser gates ผ่าน; รอ physical-device และ assistive-technology sign-off | M-02–M-05 |
-| M-07 Release Hardening | `PARTIAL` | M-07A local production foundation พร้อม; รอ staging validation และ M-07B launch operations | M-01–M-06 |
+| M-07 Release Hardening | `PARTIAL` | M-07A local production foundation พร้อม; staging/launch รอ feature scope ใหม่และ regression | M-01–M-06, M-08 |
+| M-08 Flexible Weekly Routine & Adherence | `PARTIAL` | Weekly choice, Frequency/Coverage, History, Notification Center และ compatibility migration ผ่าน local gates; รอ production migration และ Firefox gate | M-02–M-05 |
 
 ### งานสามลำดับถัดไป
 
-1. Provision Vercel, Staging Supabase และ Sentry secrets แล้วรัน staging workflow/smoke
-2. ลงผล physical-phone, 200% zoom, High Contrast และ NVDA/VoiceOver เพื่อปิด M-06
-3. ทำ M-07B production launch, backup/restore rehearsal และ rollback drill
+1. ตรวจ migration `20260829080432` แล้ว apply ไป linked Supabase พร้อมตรวจ security advisor หลัง deploy
+2. รัน Firefox regression จาก non-elevated terminal และ physical-phone, 200% zoom, High Contrast, NVDA/VoiceOver สำหรับ P-01–P-15
+3. Provision staging แล้วทำ M-07B production launch, backup/restore rehearsal และ rollback drill
 
 ## 4. M-00 — Product and Design Definition
 
 **Status:** `DONE`
 
 - [x] Product requirements, MVP boundary และ acceptance criteria
-- [x] User flows UF-01–UF-11
-- [x] Information architecture และ page inventory P-01–P-13
+- [x] User flows UF-01–UF-12
+- [x] Information architecture และ page inventory P-01–P-15
 - [x] Swiss dark design system และ responsive rules
 - [x] Domain model, logical database schema และ data consistency rules
 - [x] Development milestones และ traceability
@@ -102,7 +103,7 @@ MVP ครอบคลุม Exercise Library, Workout Templates, Routine, Today
 - [ ] กำหนด development/staging/production environment strategy
 - [ ] เพิ่ม application error reporting และ server mutation observability
 - [ ] เขียน production backup/restore runbook และทดสอบ restore
-- [ ] อัปเดต README Current Status ให้ตรงกับ implementation ล่าสุด
+- [x] อัปเดต README Current Status ให้ตรงกับ implementation ล่าสุด
 
 **Exit criteria:** Owner login เข้า protected installable shell ได้, unauthorized access ถูกปฏิเสธ, production configuration ไม่มี secret รั่ว และมีหลักฐาน restore/observability ก่อนเปิดใช้จริง
 
@@ -336,25 +337,67 @@ M-07A ยังไม่เป็น `DONE` จนกว่า staging smoke ผ
 
 **Exit criteria:** deploy ซ้ำได้, restore ได้จริง, secrets ไม่รั่ว, RLS ป้องกัน cross-user access และ owner ทำ core flow บน production ได้ครบ
 
-## 13. Requirement traceability
+## 13. M-08 — Flexible Weekly Routine, History & Notifications
+
+**Status:** `PARTIAL`
+
+ขอบเขตนี้แทนที่ fixed `next_workout_index` behavior ที่ส่งมอบใน M-02/M-03 โดยไม่เปลี่ยน Session snapshot, offline journal หรือ owner-device guarantees เดิม
+
+### M-08.1 — Domain and data migration
+
+- [x] เพิ่ม RoutineActivation, RoutineWeekPlan, RoutineWeekPlanDay และ WeeklyRoutineNotification พร้อม RLS/indexes
+- [x] เปลี่ยน RoutineDay sequence ให้เป็น display order และยกเลิก `next_workout_index` จาก domain contract
+- [x] Backfill Active Routine ปัจจุบันเป็น activation ที่มีผล Routine Week ปัจจุบันโดยไม่แก้ Session snapshots เดิม
+- [x] Materialize zero-session weeks และ snapshot timezone/Routine/Day labels อย่าง deterministic
+
+### M-08.2 — Planning and Today
+
+- [x] Weekly Frequency Target ตั้งต้นเท่าจำนวน Routine Days แต่แก้ได้ 1–7
+- [x] Activate Routine โดยเลือกสัปดาห์นี้/หน้า และบังคับสัปดาห์หน้าเมื่อ weekly plan ถูก lock
+- [x] Today แสดง Frequency, Coverage, Recommended Routine Days ทั้งหมด และ Repeat choices
+- [x] Start selected Routine Day โดย lock RoutineWeekPlan และ snapshot source IDs แบบ atomic
+- [x] Ad-hoc Session ไม่ผูก RoutineWeekPlan และไม่นับ Frequency/Coverage
+
+### M-08.3 — Weekly Routine History and Notification Center
+
+- [x] P-14 Notification Center พร้อม unread/read/dismissed states และ unread count ใน app shell
+- [x] P-15 Weekly Routine History/detail พร้อม complete, incomplete, zero-session และ provisional states
+- [x] Monday finalization ใช้ User timezone และ `started_at`; Session คร่อมสัปดาห์ทำให้ผลเก่า provisional
+- [x] Finalized incomplete weeks สร้าง notification แยกทุกสัปดาห์ พร้อม links ไป weekly detail/all history
+
+### M-08.4 — Retrospective consistency and verification
+
+- [x] History edit/delete คำนวณ Weekly Routine History ใหม่และแสดง impact warning โดยไม่สร้าง notification ใหม่
+- [x] Unit/database tests ครอบคลุม repeat Day, Frequency/Coverage, lock/effective week, zero/provisional weeks และ idempotency
+- [x] E2E ครอบคลุม Legs-first PPL, multiple missed-week notifications, read/dismiss และ responsive P-14/P-15
+- [ ] รัน typecheck, lint, unit, database, build และ Playwright regression ทั้งชุด
+
+**หลักฐานปัจจุบัน:** `npm run quality` ผ่าน 106 unit tests และ bundle gate; local database lint ผ่านโดยไม่มี schema error; database suite ผ่าน 193 assertions รวม M-08 41 assertions; Chromium/Axe/responsive/WebKit regression ผ่าน 60/60. Firefox บน elevated Windows terminal ยังติด Playwright environment error และ migration completion ยังไม่ได้ apply ไป linked project.
+
+**Exit criteria:** ผู้ใช้เลือก Push/Pull/Legs ลำดับใดก็ได้, Today แนะนำทุก Day ที่ยังขาด, Routine Week reset วันจันทร์, ประวัติ/notification สะท้อน Frequency และ Coverage ถูกต้อง และ fixed-sequence behavior ไม่หลงเหลือใน runtime contract
+
+## 14. Requirement traceability
 
 | Requirement | Flow | Pages | Milestone | สถานะ |
 | --- | --- | --- | --- | --- |
 | FR-AU-01–03 | UF-01 | P-01, P-13 | M-01, M-07 | `PARTIAL` |
 | FR-EX-01–04 | UF-02 | P-03, P-04 | M-02 | `DONE` |
-| FR-PL-01–05 | UF-03 | P-05, P-06 | M-02 | `DONE` |
-| FR-TD-01–04 | UF-04, UF-05 | P-02 | M-02, M-03 | `DONE` |
+| FR-PL-01–02 | UF-03 | P-05, P-06 | M-02 | `DONE` |
+| FR-PL-03–06 | UF-03 | P-05, P-15 | M-08 | `PARTIAL` |
+| FR-TD-01–05 | UF-04, UF-05 | P-02 | M-08 | `PARTIAL` |
 | FR-AW-01–07 | UF-05–07 | P-07, P-08 | M-03 | `DONE` online |
 | FR-AW-08–09 | UF-06, UF-08, UF-09 | P-07, P-13 | M-04 | `DONE` |
-| FR-AW-10–11 | UF-07 | P-02, P-07, P-08 | M-03, M-04 | `DONE` |
+| FR-AW-10 | UF-07 | P-02, P-07, P-08 | M-03, M-04 | `DONE` |
+| FR-AW-11 | UF-07 | P-02, P-07, P-08 | M-08 | `PARTIAL` |
+| FR-WR-01–06 | UF-10, UF-12 | P-05, P-14, P-15 | M-08 | `PARTIAL` |
 | FR-HI-01–05 | UF-10 | P-09, P-10 | M-05A | `DONE` |
 | FR-PR-01–05 | UF-11 | P-11, P-12 | M-05B | `DONE` |
 | FR-ST-01–03 | UF-06, UF-08, UF-09 | P-07, P-13 | M-03–M-05 | `PARTIAL` |
-| NFR-01–02, 09 | ทุก core flow | P-01–P-13 | M-01, M-06 | `PARTIAL` |
+| NFR-01–02, 09 | ทุก core flow | P-01–P-15 | M-01, M-06, M-08 | `PARTIAL` |
 | NFR-03–04 | UF-05–09 | P-02, P-07, P-13 | M-04 | `DONE` |
 | NFR-05–08 | UF-01, UF-08–11 | ทุก protected page | M-01, M-07 | `PARTIAL` |
 
-## 14. Quality gates
+## 15. Quality gates
 
 ### ทุก feature slice
 
@@ -371,31 +414,32 @@ M-07A ยังไม่เป็น `DONE` จนกว่า staging smoke ผ
 ### คำสั่งตรวจมาตรฐาน
 
 ```powershell
-pnpm typecheck
-pnpm lint
-pnpm test
-pnpm build
-pnpm exec supabase db lint --local
-pnpm exec supabase test db
-pnpm test:e2e
+npm run typecheck
+npm run lint
+npm test
+npm run build
+npx supabase db lint --local
+npx supabase test db
+npm run test:e2e
 git diff --check
 ```
 
 การเปลี่ยน migration ต้องตรวจ `supabase db reset` บนฐาน local ที่ยอมล้างข้อมูลได้ และ `supabase db push --local` บนฐานที่ต้องรักษาข้อมูล
 
-## 15. Definition of Done สำหรับ MVP
+## 16. Definition of Done สำหรับ MVP
 
 MVP ถือว่าเสร็จเมื่อ:
 
-- M-01 ถึง M-07 ไม่มีสถานะ `PARTIAL`, `NEXT`, `PENDING` หรือ `BLOCKED`
+- M-01 ถึง M-08 ไม่มีสถานะ `PARTIAL`, `NEXT`, `PENDING` หรือ `BLOCKED`
 - Owner ทำ flow Login → Exercise → Template → Routine → Today → Workout → History → Progress ได้ครบ
 - Active Workout ทำต่อได้เมื่อ offline และ sync โดยไม่สูญหายหรือซ้ำ
 - Snapshot เก่าไม่เปลี่ยนตาม Template/Routine ปัจจุบัน
 - History edit/delete ทำให้ Progress คำนวณใหม่ถูกต้อง
+- Flexible Routine, Weekly Frequency/Coverage, Weekly Routine History และ Notification Center ผ่าน acceptance criteria
 - Core flows ผ่าน mobile, tablet, desktop, keyboard และ accessibility gates
 - Production RLS, backup/restore, monitoring และ rollback ผ่านการทดสอบ
 
-## 16. Milestone log
+## 17. Milestone log
 
 | วันที่ | Milestone | Commit/หลักฐาน | หมายเหตุ |
 | --- | --- | --- | --- |
@@ -407,8 +451,10 @@ MVP ถือว่าเสร็จเมื่อ:
 | 15 ส.ค. 2026 | M-05B | migration `202608150002`; 94 unit, 149 DB และ 33 Playwright tests | Live Progress, PR integration และ accessible charts |
 | 16 ส.ค. 2026 | M-06 automated gate | 54 Playwright + 104 unit + 149 DB tests | Chromium/Axe/Firefox/WebKit ผ่าน; manual sign-off ยังค้าง |
 | 16 ส.ค. 2026 | M-07A local foundation | working tree | PWA, typed config, privacy-safe telemetry, Vercel/CI และ runbooks; staging smoke รอ remote credentials |
+| 20 ส.ค. 2026 | M-08 specification | working tree | Flexible Weekly Routine, Frequency/Coverage, Weekly History และ Notification Center requirements/flows/data design |
+| 29 ส.ค. 2026 | M-08 implementation verification | migration `20260829080432`; 106 unit, 193 DB และ 60 Chromium/WebKit E2E tests | เพิ่ม legacy activation backfill, compatibility RPC, timezone initialization, provisional active-Day state และ notification error/multi-week coverage; รอ production apply และ Firefox rerun |
 
-## 17. Future backlog
+## 18. Future backlog
 
 รายการต่อไปนี้เป็น `DEFERRED` จนกว่า MVP Definition of Done จะผ่าน:
 

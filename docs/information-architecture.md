@@ -25,20 +25,23 @@ Application
 ├── P-03 Exercise Library
 │   └── P-04 Exercise Detail / Editor
 ├── P-05 Plans & Routines
-│   └── P-06 Workout Template Editor
+│   ├── P-06 Workout Template Editor
+│   └── P-15 Weekly Routine History
 ├── P-09 Workout History
 │   └── P-10 History Detail / Edit
 ├── P-11 Progress Overview
 │   └── P-12 Exercise Progress Detail
-└── P-13 Settings & Sync Status
+├── P-13 Settings & Sync Status
+└── P-14 Notification Center
+    └── P-15 Weekly Routine History
 ```
 
 ### Global information domains
 
 - **Do now:** Today, Active Workout
 - **Prepare:** Exercises, Plans & Routines
-- **Review:** History, Progress
-- **System:** Account, units, timer preferences, offline/sync state
+- **Review:** Workout History, Weekly Routine History, Progress
+- **System:** Notifications, account, units, timer preferences, offline/sync state
 
 ## 3. Page inventory
 
@@ -52,11 +55,11 @@ Application
 
 ### P-02 — Today
 
-- **Goal:** แสดง next action ตาม Active Session/Active Routine state
-- **Primary action:** Resume ถ้ามี Active Session; มิฉะนั้น Start next workout
+- **Goal:** แสดง Active Session หรือช่วยเลือก Routine Day ที่เหมาะกับ Coverage ปัจจุบัน
+- **Primary action:** Resume ถ้ามี Active Session; มิฉะนั้นเลือก Recommended Routine Day แล้ว Start
 - **Secondary actions:** View plan, start ad-hoc workout
-- **Key content:** next Template preview, previous completion, routine position, sync/owner-device status
-- **States:** active-session, next-workout, no-routine, offline-unavailable, locked-by-other-device
+- **Key content:** Weekly Frequency, Routine Coverage, Recommended/Repeat Routine Days, Template preview, sync/owner-device status
+- **States:** active-session, routine-choices, coverage-complete, no-routine, offline-unavailable, locked-by-other-device
 - **Related flows:** UF-01, UF-04, UF-05, UF-09
 
 ### P-03 — Exercise Library
@@ -78,11 +81,11 @@ Application
 
 ### P-05 — Plans & Routines
 
-- **Goal:** จัดการ Templates, Routine sequence และ Active Routine
+- **Goal:** จัดการ Templates, flexible weekly Routine และ effective-week activation
 - **Primary action:** Create Template หรือ Activate Routine ตาม state
-- **Key content:** active badge, weekly frequency, ordered Templates, archived items
-- **States:** no-plan, draft, active, blocked-by-active-session, save error
-- **Related flows:** UF-01, UF-03
+- **Key content:** active/effective-week badge, weekly frequency default/override, Routine Days, Pending Routine Change, archived items และทางไป Weekly Routine History
+- **States:** no-plan, draft, active-current-week, scheduled-next-week, locked-week-plan, save error
+- **Related flows:** UF-01, UF-03, UF-12
 
 ### P-06 — Workout Template Editor
 
@@ -149,11 +152,29 @@ Application
 - **States:** synced, pending, offline, retrying, conflict
 - **Related flows:** UF-08, UF-09
 
+### P-14 — Notification Center
+
+- **Goal:** รวม Weekly Routine Notifications และแจ้งสถานะที่ต้องรับรู้ไว้ในที่เดียว
+- **Primary action:** Open Notification
+- **Secondary actions:** Dismiss รายการ, View All Routine History
+- **Key content:** unread/read state, Routine Week range, Frequency/Coverage summary, missing Routine Days
+- **States:** loading, unread, read, dismissed-from-default-view, empty, offline cached, error
+- **Related flows:** UF-12
+
+### P-15 — Weekly Routine History
+
+- **Goal:** ตรวจผล Routine รายสัปดาห์อย่างถาวรและเปิดรายละเอียดของแต่ละ Routine Week
+- **Primary action:** Open Week Detail
+- **Key content:** Routine snapshot, week range/timezone, Frequency actual/target, Coverage, completed/repeated/missing Routine Days และ provisional state
+- **States:** loading, complete, incomplete, zero-session, provisional-active-session, recalculating, offline cached, error
+- **Entry points:** P-05 Plans & Routines และ P-14 Notification Center; ไม่เป็น global primary-navigation item
+- **Related flows:** UF-10, UF-12
+
 ## 4. Navigation by device
 
 ### Desktop / laptop
 
-- Persistent left rail: Today, Plans, Exercises, History, Progress
+- Persistent left rail: Today, Plans, Exercises, History, Progress; Notification Center เป็น utility trigger พร้อม unread count
 - Settings และ sync status อยู่ท้าย rail
 - Main content ใช้ 12-column grid
 - List-detail flows ใช้ main pane + contextual side pane เมื่อช่วยลดการสลับหน้า
@@ -168,7 +189,7 @@ Application
 
 ### Phone
 
-- Bottom navigation: Today, Plans, History, Progress; Exercises และ Settings เข้าผ่าน More/contextual entry
+- Bottom navigation: Today, Plans, History, Progress; Notification Center ใช้ top-bar utility trigger และ Exercises/Settings เข้าผ่าน More/contextual entry
 - Active Workout เปิด full-screen focus mode และซ่อน global bottom navigation
 - Sticky bottom action สำหรับ Complete Set/Finish โดยเคารพ safe-area inset
 - Editors แบ่งเป็น sections/steps; list-detail เปลี่ยนเป็น push navigation
@@ -179,12 +200,14 @@ Application
 | Pattern | Desktop | Tablet | Phone |
 | --- | --- | --- | --- |
 | Global navigation | Persistent rail | Collapsible rail/drawer | Bottom navigation |
-| Today | Summary + next workout + context columns | Two sections | Next action first; stacked summary |
+| Today | Frequency/Coverage + recommended choices + context columns | Summary + choice list | Resume หรือ recommended choices ก่อน; stacked summary |
 | Exercise Library | Filters sidebar + dense list | Collapsible filters | Search first + filter sheet |
 | Template Editor | Library and canvas side-by-side | Selector drawer + canvas | Step-based editor |
-| Plans/Routine | Sequence grid/table | Reorderable list | Vertical ordered cards |
+| Plans/Routine | Routine Day grid + effective-week controls | Selectable list + activation sheet | Vertical Routine Day choices + activation sheet |
 | Active Workout | Exercise index + working area + timer | Working area + compact index | Full-screen single-exercise focus |
 | History | Table/list + detail pane | List then detail | Session cards then push detail |
+| Notification Center | Utility panel/feed | Drawer/full pane | Full-page notification feed |
+| Weekly Routine History | Week table + detail pane | Week list then detail | Weekly summary rows then push detail |
 | Progress | Multi-chart comparison | One/two charts per row | One metric/chart per section |
 | Destructive confirmation | Modal | Modal/sheet | Bottom sheet/full-screen confirm |
 

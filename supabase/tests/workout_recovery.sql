@@ -1,8 +1,9 @@
 begin;
 
-select plan(11);
+select plan(19);
 
 select has_function('public', 'workout_remote_abandon_session', ARRAY['uuid', 'uuid', 'integer'], 'Remote abandon RPC exists');
+select has_function('public', 'workout_transfer_session_ownership', ARRAY['uuid', 'uuid', 'uuid', 'integer'], 'Ownership transfer RPC exists');
 
 do $$
 declare
@@ -37,6 +38,38 @@ select throws_ok(
   $$select public.workout_remote_abandon_session('70707070-7070-4070-8070-707070707070', '60606060-6060-4060-8060-606060606060', 2)$$,
   'session_not_active',
   'A completed Session cannot be remotely abandoned'
+);
+
+select is(public.workout_start_adhoc('80808080-8080-4080-8080-808080808080', '10101010-1010-4010-8010-101010101010', null, null, 'Transfer Session')::text, '80808080-8080-4080-8080-808080808080', 'A Session starts on the original device');
+select is(
+  public.workout_transfer_session_ownership('90909090-9090-4090-8090-909090909090', '80808080-8080-4080-8080-808080808080', '20202020-2020-4020-8020-202020202020', 1),
+  2,
+  'An Active Session transfers to another registered device'
+);
+select is(
+  public.workout_transfer_session_ownership('90909090-9090-4090-8090-909090909090', '80808080-8080-4080-8080-808080808080', '20202020-2020-4020-8020-202020202020', 1),
+  2,
+  'Ownership transfer retry is idempotent'
+);
+select is(
+  (select owner_device_id::text from public.workout_sessions where id = '80808080-8080-4080-8080-808080808080'),
+  '20202020-2020-4020-8020-202020202020',
+  'The target device becomes the single writer'
+);
+select throws_ok(
+  $$select public.workout_finish_session('80808080-8080-4080-8080-808080808080', '10101010-1010-4010-8010-101010101010', 2)$$,
+  'device_locked',
+  'The original device can no longer mutate the Session'
+);
+select is(
+  public.workout_finish_session('80808080-8080-4080-8080-808080808080', '20202020-2020-4020-8020-202020202020', 2)::text,
+  '80808080-8080-4080-8080-808080808080',
+  'The new owner can continue and finish the Session'
+);
+select throws_ok(
+  $$select public.workout_transfer_session_ownership('a0a0a0a0-a0a0-40a0-80a0-a0a0a0a0a0a0', '80808080-8080-4080-8080-808080808080', '10101010-1010-4010-8010-101010101010', 3)$$,
+  'session_not_active',
+  'A completed Session cannot transfer ownership'
 );
 
 select * from finish();

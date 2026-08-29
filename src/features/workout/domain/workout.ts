@@ -60,6 +60,8 @@ export interface WorkoutSession {
   sourceType: WorkoutSourceType;
   sourceRoutineId: string | null;
   sourceRoutineDayId: string | null;
+  sourceRoutineWeekPlanId: string | null;
+  sourceRoutineWeekPlanDayId: string | null;
   sourceTemplateId: string | null;
   sourceRoutineRevision: number | null;
   sourceTemplateRevision: number | null;
@@ -166,8 +168,8 @@ export class WorkoutRepositoryError extends Error {
 export interface StartPlannedInput {
   sessionId: string;
   deviceId: string;
-  routineId: string;
-  routineRevision: number;
+  routineWeekPlanId: string;
+  routineWeekPlanDayId: string;
   templateRevision: number;
 }
 
@@ -261,28 +263,11 @@ export interface WorkoutRepository {
   }): Promise<WorkoutSession>;
   finishSession(sessionId: string, deviceId: string, expectedVersion: number): Promise<WorkoutSession>;
   discardSession(sessionId: string, deviceId: string, expectedVersion: number): Promise<void>;
+  transferSessionOwnership(input: { operationId: string; sessionId: string; targetDeviceId: string; expectedVersion: number }): Promise<WorkoutSession>;
   remoteAbandonSession(input: { operationId: string; sessionId: string; expectedVersion: number }): Promise<WorkoutSession>;
   getCompletionSummary(sessionId: string): Promise<WorkoutCompletionSummary>;
 }
 
-export function weightPayload(weight: WeightValue | null) {
-  return weight
-    ? { value: weight.value, unit: weight.unit, kg: weight.kg }
-    : { value: null, unit: null, kg: null };
-}
-
-export function effortPayload(effort: EffortValue | null) {
-  return effort
-    ? { metric: effort.metric, value: effort.value }
-    : { metric: null, value: null };
-}
-
 export function kgFromWeight(value: number, unit: WeightUnit) {
   return Number((unit === "LB" ? value * 0.45359237 : value).toFixed(4));
-}
-
-export function isValidEffort(effort: EffortValue | null) {
-  if (!effort) return true;
-  if (effort.metric === "RPE") return effort.value >= 1 && effort.value <= 10 && Number.isInteger(effort.value * 2);
-  return effort.value >= 0 && effort.value <= 10 && Number.isInteger(effort.value);
 }

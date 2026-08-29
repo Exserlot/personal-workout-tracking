@@ -119,6 +119,8 @@ function cachedDomainSession() {
     sourceType: "PLANNED",
     sourceRoutineId: "routine-1",
     sourceRoutineDayId: "day-1",
+    sourceRoutineWeekPlanId: "week-1",
+    sourceRoutineWeekPlanDayId: "week-day-1",
     sourceTemplateId: "template-push",
     sourceRoutineRevision: 1,
     sourceTemplateRevision: 1,
@@ -153,11 +155,30 @@ async function mockToday(
     activeSession?: ReturnType<typeof sessionRow> | null;
     routine?: ReturnType<typeof routineRow> | null;
     templates?: ReturnType<typeof templateRow>[];
+    completedCounts?: number[];
+    frequencyActual?: number;
   } = {},
 ) {
   const activeSession = options.activeSession ?? null;
   const templates = options.templates ?? [templateRow(), templateRow("template-pull", "Pull Day", 2)];
   const routine = options.routine === undefined ? routineRow(templates[0]) : options.routine;
+  const currentWeek = routine ? {
+    id: "week-1",
+    routine_id: routine.id,
+    routine_name: routine.name,
+    routine_revision: routine.revision,
+    week_start: "2026-08-17",
+    week_end: "2026-08-23",
+    timezone: "Asia/Bangkok",
+    frequency_actual: options.frequencyActual ?? 0,
+    frequency_target: routine.weekly_frequency_target,
+    coverage_actual: 0,
+    coverage_target: routine.routine_days.length,
+    status: "OPEN",
+    locked_at: null,
+    finalized_at: null,
+    days: routine.routine_days.map((day, index) => ({ id: `week-day-${index + 1}`, routine_day_id: day.id, template_id: day.template_id, display_order: index + 1, day_label: day.label, template_name: day.template.name, completed_count: options.completedCounts?.[index] ?? 0, active_count: 0 })),
+  } : null;
 
   await page.route("**/rest/v1/**", async (route) => {
     const url = new URL(route.request().url());
@@ -212,6 +233,15 @@ async function mockToday(
       await route.fulfill({ json: deviceId });
       return;
     }
+    if (rpc === "preferences_get_or_create_timezone") {
+      await route.fulfill({ json: "Asia/Bangkok" });
+      return;
+    }
+    if (rpc === "routine_get_current_week") {
+      await route.fulfill({ json: { timezone: "Asia/Bangkok", current_week_start: "2026-08-17", next_week_start: "2026-08-24", current_plan: currentWeek, scheduled_activation: null } });
+      return;
+    }
+    if (rpc === "routine_list_notifications") { await route.fulfill({ json: [] }); return; }
     if (rpc === "workout_start_planned" || rpc === "workout_start_adhoc") {
       await route.fulfill({ json: sessionId });
       return;
@@ -266,13 +296,30 @@ test.describe("Today experience", () => {
     await expect(active).toContainText("1");
   });
 
-  test("shows an Active Session from another device as read-only", async ({ page }) => {
+  test("recommends every uncovered Day after Legs and keeps Legs repeatable", async ({ page }) => {
+    const templates = [templateRow("template-push", "Push Day", 2), templateRow("template-pull", "Pull Day", 2), templateRow("template-legs", "Legs Day", 2)];
+    const routine = routineRow(templates[0]);
+    routine.name = "Push Pull Legs";
+    routine.routine_days = templates.map((template, index) => ({ id: `day-${index + 1}`, template_id: template.id, sequence_no: index + 1, label: ["Push", "Pull", "Legs"][index], notes: "", template: { name: template.name, archived_at: null } }));
+    await mockToday(page, { templates, routine, completedCounts: [0, 0, 1], frequencyActual: 1 });
+    await page.goto("/today");
+
+    const planned = page.getByTestId("today-planned-workout");
+    await expect(planned.getByRole("button", { name: /Push ยังไม่ครอบคลุม/ })).toBeVisible();
+    await expect(planned.getByRole("button", { name: /Pull ยังไม่ครอบคลุม/ })).toBeVisible();
+    await expect(planned.getByRole("button", { name: /Legs เล่นแล้ว 1 ครั้ง/ })).toBeVisible();
+    await expect(planned.getByText("เล่นแล้ว 1 ครั้ง", { exact: true })).toBeVisible();
+    await expect(planned.getByText("1/3", { exact: true })).toBeVisible();
+    await expect(planned.getByText("0/3", { exact: true })).toBeVisible();
+  });
+
+  test("offers to continue an Active Session from another device", async ({ page }) => {
     await mockToday(page, { activeSession: sessionRow(otherDeviceId) });
     await page.goto("/today");
 
     const active = page.getByTestId("today-active-session");
-    await expect(active.getByRole("link", { name: "ดูแบบอ่านอย่างเดียว", exact: true })).toBeVisible();
-    await expect(active).toContainText("กลับไปยังอุปกรณ์ที่เริ่ม Session");
+    await expect(active.getByRole("link", { name: "เปิดเพื่อทำต่อบนเครื่องนี้", exact: true })).toBeVisible();
+    await expect(active).toContainText("เครื่องเดิมจะเปลี่ยนเป็นอ่านอย่างเดียว");
   });
 
   test("keeps one Plans action and one Ad-hoc action when no Routine exists", async ({ page }) => {

@@ -13,6 +13,7 @@ import { listRecoveryBundles, listRecoveryRawRecords } from "../features/workout
 import { getDeviceId } from "../features/workout/data/deviceIdentity";
 import type { RecoveryBundle, RecoveryRawBundle } from "../features/workout/data/activeSessionCache";
 import type { WorkoutConflictDetail } from "../features/workout/domain/workout";
+import { useRoutineTrackingRepository } from "../features/routine-tracking/RoutineTrackingRepositoryContext";
 
 function formatDate(value: number | string | null | undefined) {
   if (!value) return "ยังไม่มีข้อมูล";
@@ -44,6 +45,7 @@ export function SettingsPage() {
   const { session, signOut } = useAuth();
   const sync = useWorkoutSync();
   const repository = useWorkoutRepository();
+  const routineTrackingRepository = useRoutineTrackingRepository();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const deviceId = useMemo(() => getDeviceId(), []);
@@ -60,6 +62,9 @@ export function SettingsPage() {
   const [logoutOpen, setLogoutOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const [syncingBeforeLogout, setSyncingBeforeLogout] = useState(false);
+  const [timezone, setTimezone] = useState("");
+  const [timezoneSaved, setTimezoneSaved] = useState("");
+  const [savingTimezone, setSavingTimezone] = useState(false);
 
   const reload = useCallback(async () => {
     setOverview({ ...sync.getOverviewSnapshot() });
@@ -81,6 +86,19 @@ export function SettingsPage() {
     });
     return unsubscribe;
   }, [reload, sync, userId]);
+
+  useEffect(() => {
+    const detected = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+    void routineTrackingRepository.getTimezone(detected).then((value) => { setTimezone(value); setTimezoneSaved(value); }).catch((reason) => setError(reason instanceof Error ? reason.message : "โหลด Timezone ไม่สำเร็จ"));
+  }, [routineTrackingRepository]);
+
+  async function saveTimezone() {
+    if (!timezone.trim() || timezone === timezoneSaved) return;
+    setSavingTimezone(true); setError("");
+    try { const value = await routineTrackingRepository.updateTimezone(timezone.trim()); setTimezone(value); setTimezoneSaved(value); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "บันทึก Timezone ไม่สำเร็จ"); }
+    finally { setSavingTimezone(false); }
+  }
 
   useEffect(() => {
     const requestedSession = searchParams.get("session");
@@ -176,6 +194,8 @@ export function SettingsPage() {
           <Divider />
           <SectionHeader eyebrow="PREFERENCES" title="หน่วยและตัวจับเวลา" description="การตั้งค่าเหล่านี้ยังเป็นค่าเริ่มต้นของ MVP" showTopRule={false} />
           <div className="grid gap-5 tablet:grid-cols-2"><Input label="หน่วยน้ำหนัก" value="Kilograms (kg)" readOnly helperText="รองรับ kg ใน MVP" /><Input label="เวลาพักเริ่มต้น" value="90" unit="SEC" readOnly /></div>
+          <SectionHeader eyebrow="ROUTINE TIMEZONE" title="เขตเวลาของ Routine Week" description="ใช้ IANA timezone เช่น Asia/Bangkok การเปลี่ยนแปลงมีผลกับสัปดาห์ที่ยังไม่ถูกสร้างเท่านั้น" />
+          <div className="grid gap-3 tablet:grid-cols-[minmax(0,1fr)_auto] tablet:items-end"><Input label="IANA timezone" value={timezone} onChange={(event) => setTimezone(event.target.value)} helperText={`Browser ตรวจพบ ${Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"}`} /><Button variant="secondary" disabled={savingTimezone || !timezone.trim() || timezone === timezoneSaved} onClick={() => void saveTimezone()}>{savingTimezone ? "กำลังบันทึก…" : "บันทึก Timezone"}</Button></div>
         </section>
         <aside className="col-span-4 mt-10 min-w-0 tablet:col-span-8 tablet:mt-0 desktop:col-span-4"><SectionHeader eyebrow="RECOVERY ARCHIVE" title="สำเนาที่เก็บไว้" description="ข้อมูล local ที่เคยมี conflict จะไม่ถูกลบทันที" showTopRule={false} />{archives.length === 0 && rawArchives.length === 0 ? <p className="py-5 text-sm text-ink-muted">ยังไม่มี Recovery Archive</p> : <>{archives.length > 0 ? <div className="divide-y divide-line">{archives.map((bundle) => <div key={bundle.id} className="py-4"><p className="font-semibold text-ink">{bundle.localSession.templateNameSnapshot ?? "Workout Session"}</p><p className="mt-1 text-sm text-ink-secondary">{formatDate(bundle.archivedAt)} · {bundle.reason}</p><Button className="mt-3" variant="quiet" size="compact" onClick={() => exportArchive(bundle)}>Export JSON</Button></div>)}</div> : null}{rawArchives.length > 0 ? <div className="mt-4 divide-y divide-line border-t border-line"><p className="px-1 py-3 text-xs font-semibold uppercase tracking-[0.08em] text-accent">ข้อมูลคิวที่ต้องกู้คืน</p>{rawArchives.map((bundle) => <div key={bundle.id} className="py-4"><p className="font-semibold text-ink">ข้อมูลที่ตรวจสอบไม่ได้</p><p className="mt-1 text-sm text-ink-secondary">{formatDate(bundle.archivedAt)} · {bundle.reason}</p><Button className="mt-3" variant="quiet" size="compact" onClick={() => exportRawArchive(bundle)}>Export JSON</Button></div>)}</div> : null}</>}<div className="mt-10 border-t border-line pt-6"><SectionHeader eyebrow="OWNER ACCOUNT" title="บัญชีที่กำลังใช้งาน" showTopRule={false} /><p className="mt-4 break-all text-sm text-ink-secondary">{session?.user.email}</p><Button className="mt-4" variant="secondary" onClick={() => void handleSignOut()} disabled={signingOut}>{signingOut ? "กำลังออกจากระบบ…" : "ออกจากระบบ"}</Button></div></aside>
       </div>

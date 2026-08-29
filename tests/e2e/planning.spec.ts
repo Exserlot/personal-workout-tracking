@@ -32,6 +32,19 @@ test.describe("Workout Plans and Routine", () => {
     const templates: MockTemplate[] = [];
     const routines: MockRoutine[] = [];
     let nextId = 1;
+    let activeRoutineId: string | null = null;
+
+    const currentWeek = () => {
+      const routine = routines.find((item) => item.id === activeRoutineId);
+      return routine ? {
+        id: "week-current", routine_id: routine.id, routine_name: routine.name, routine_revision: routine.revision,
+        week_start: "2026-08-17", week_end: "2026-08-23", timezone: "Asia/Bangkok",
+        frequency_actual: 0, frequency_target: routine.weekly_frequency_target,
+        coverage_actual: 0, coverage_target: routine.routine_days.length,
+        status: "OPEN", locked_at: null, finalized_at: null,
+        days: routine.routine_days.map((day, index) => ({ id: `week-day-${index + 1}`, routine_day_id: String(day.id), template_id: String(day.template_id), display_order: index + 1, day_label: String(day.label), template_name: (day.template as MockTemplate).name, completed_count: 0, active_count: 0 })),
+      } : null;
+    };
 
     await page.addInitScript(() => {
       window.localStorage.setItem("fitness-auth-token", JSON.stringify({
@@ -78,6 +91,15 @@ test.describe("Workout Plans and Routine", () => {
         await route.fulfill({ json: "11111111-1111-4111-8111-111111111111" });
         return;
       }
+      if (rpc === "preferences_get_or_create_timezone") {
+        await route.fulfill({ json: "Asia/Bangkok" });
+        return;
+      }
+      if (rpc === "routine_get_current_week") {
+        await route.fulfill({ json: { timezone: "Asia/Bangkok", current_week_start: "2026-08-17", next_week_start: "2026-08-24", current_plan: currentWeek(), scheduled_activation: null } });
+        return;
+      }
+      if (rpc === "routine_list_notifications") { await route.fulfill({ json: [] }); return; }
       if (rpc === "planning_create_template") {
         const id = `template-${nextId++}`;
         const exercises = body.p_exercises as Array<{ exercise_id: string; sequence_no: number; notes: string; sets: Array<Record<string, unknown>> }>;
@@ -122,18 +144,13 @@ test.describe("Workout Plans and Routine", () => {
       }
       if (rpc === "planning_activate_routine") {
         const routineId = String(body.p_id);
-        routines.forEach((routine) => { routine.is_active = routine.id === routineId; if (routine.is_active) routine.next_workout_index = 0; routine.revision += 1; });
-        await route.fulfill({ json: routineId });
+        activeRoutineId = routineId;
+        await route.fulfill({ json: String(body.p_effective_week_start) });
         return;
       }
       if (rpc === "planning_deactivate_routine") {
-        const routineId = String(body.p_id);
-        const routine = routines.find((item) => item.id === routineId);
-        if (routine) {
-          routine.is_active = false;
-          routine.revision += 1;
-        }
-        await route.fulfill({ json: routineId });
+        activeRoutineId = null;
+        await route.fulfill({ json: String(body.p_effective_week_start) });
         return;
       }
       await route.fulfill({ json: body.p_id ?? null });
@@ -215,6 +232,8 @@ test.describe("Workout Plans and Routine", () => {
     await expect(page.getByText("A → B → C")).toBeVisible();
     await expect(page.getByText("Other Routines", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Activate", exact: true }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "ยืนยัน", exact: true }).click();
+    await expect(page.getByText(/เปิดใช้งาน Routine ตั้งแต่สัปดาห์/)).toBeVisible();
 
     await page.goto("/plans");
     const editActiveRoutine = page.getByRole("button", { name: /Active Routine/ });
@@ -229,11 +248,14 @@ test.describe("Workout Plans and Routine", () => {
     await expect(page.getByLabel("ชื่อวัน")).toHaveCount(2);
     await page.getByRole("button", { name: "บันทึก Routine", exact: true }).click();
 
-    page.once("dialog", (dialog) => dialog.accept());
     await page.getByRole("button", { name: "Inactive", exact: true }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "ยืนยัน", exact: true }).click();
+    await expect(page.getByText(/ปิดใช้งาน Routine ตั้งแต่สัปดาห์/)).toBeVisible();
     await expect(page.getByText("Other Routines", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Activate", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Activate", exact: true }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "ยืนยัน", exact: true }).click();
+    await expect(page.getByText(/เปิดใช้งาน Routine ตั้งแต่สัปดาห์/)).toBeVisible();
 
     await page.goto("/today");
     await expect(page.getByText("Push A").first()).toBeVisible();

@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  clampNextWorkoutIndex,
   expandGroupedTarget,
   moveItem,
   eligibleTemplates,
@@ -28,19 +27,19 @@ const target = {
 
 describe("planning rules", () => {
   const template = (id: string, exerciseCount = 1, setCount = 3, archivedAt: string | null = null) => ({ id, name: id, notes: "", revision: 1, archivedAt, exerciseCount, setCount });
-  const routine = (id: string, isActive = false, archivedAt: string | null = null) => ({ id, name: id, weeklyFrequencyTarget: 3, nextWorkoutIndex: 0, isActive, revision: 1, archivedAt, days: [] });
+  const routine = (id: string, archivedAt: string | null = null) => ({ id, name: id, weeklyFrequencyTarget: 3, revision: 1, archivedAt, days: [] });
 
   it("selects eligible templates and state-aware page actions", () => {
     expect(eligibleTemplates([template("empty", 0, 0), template("archived", 1, 3, "2026-01-01"), template("ready")])).toHaveLength(1);
     expect(plansPageActions([], [])).toEqual([{ key: "create-template", label: "สร้าง Template", variant: "primary" }]);
     expect(plansPageActions([template("ready")], [])).toMatchObject([{ key: "create-routine" }, { key: "create-template" }]);
     expect(plansPageActions([template("ready")], [routine("old")])[0]).toMatchObject({ key: "activate-routine", target: "routines" });
-    expect(plansPageActions([template("ready")], [routine("archived", false, "2026-01-01")])[0]).toMatchObject({ key: "create-routine", variant: "primary" });
-    expect(plansPageActions([template("ready")], [routine("active", true)])[0]).toMatchObject({ key: "create-template" });
+    expect(plansPageActions([template("ready")], [routine("archived", "2026-01-01")])[0]).toMatchObject({ key: "create-routine", variant: "primary" });
+    expect(plansPageActions([template("ready")], [routine("active")], "active")[0]).toMatchObject({ key: "create-template" });
   });
 
   it("keeps active and archived routines out of the other-routines list", () => {
-    expect(otherRoutines([routine("active", true), routine("archived", false, "2026-01-01"), routine("other")]).map((item) => item.id)).toEqual(["other"]);
+    expect(otherRoutines([routine("active"), routine("archived", "2026-01-01"), routine("other")], "active").map((item) => item.id)).toEqual(["other"]);
   });
 
   it("expands a grouped target into ordered working sets", () => {
@@ -72,8 +71,4 @@ describe("planning rules", () => {
     expect(source).toEqual(["A", "B", "C"]);
   });
 
-  it("clamps the next workout index after a routine shrinks", () => {
-    expect(clampNextWorkoutIndex(4, 3)).toBe(2);
-    expect(clampNextWorkoutIndex(4, 0)).toBe(0);
-  });
 });

@@ -1,5 +1,4 @@
 import type {
-  ActiveRoutinePreview,
   Routine,
   RoutineDraft,
   WorkoutTemplate,
@@ -9,6 +8,7 @@ import type {
 import type { PlanningValidationErrors } from "../domain/planningRules";
 
 export type PlanningRepositoryErrorCode = "validation" | "not-found" | "conflict" | "referenced" | "offline" | "unknown";
+export type RoutineActivationTiming = "CURRENT" | "NEXT";
 
 export class PlanningRepositoryError extends Error {
   constructor(
@@ -32,8 +32,7 @@ export interface PlanningRepository {
   getRoutine(id: string): Promise<Routine | null>;
   createRoutine(draft: RoutineDraft): Promise<Routine>;
   updateRoutine(id: string, expectedRevision: number, draft: RoutineDraft): Promise<Routine>;
-  activateRoutine(id: string, expectedRevision: number): Promise<Routine>;
-  deactivateRoutine(id: string, expectedRevision: number): Promise<Routine>;
+  activateRoutine(id: string, expectedRevision: number, timing: RoutineActivationTiming): Promise<string>;
+  deactivateRoutine(timing: RoutineActivationTiming): Promise<string>;
   archiveRoutine(id: string, expectedRevision: number): Promise<void>;
-  getActiveRoutinePreview(): Promise<ActiveRoutinePreview | null>;
 }

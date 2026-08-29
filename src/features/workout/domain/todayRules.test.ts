@@ -36,6 +36,8 @@ const session: WorkoutSession = {
   sourceType: "PLANNED",
   sourceRoutineId: "routine-1",
   sourceRoutineDayId: "day-1",
+  sourceRoutineWeekPlanId: "week-1",
+  sourceRoutineWeekPlanDayId: "week-day-1",
   sourceTemplateId: "template-1",
   sourceRoutineRevision: 1,
   sourceTemplateRevision: 1,

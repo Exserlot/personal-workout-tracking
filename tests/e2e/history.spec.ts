@@ -23,6 +23,7 @@ async function mockHistory(page: Page) {
   await page.route("**/rest/v1/exercises**", async (route) => await route.fulfill({ json: [{ id: "starter-bench", name: "Barbell Bench Press", normalized_name: "barbell bench press", equipment_code: "barbell", notes: "", owner_user_id: null, archived_at: null, version: 1, primary_muscle: { code: "chest" }, exercise_secondary_muscles: [] }] }));
   await page.route("**/rest/v1/rpc/history_update_session", async (route) => { current = sessionRow({ version: 2, notes: "Updated note" }); await route.fulfill({ json: { result_version: 2 } }); });
   await page.route("**/rest/v1/rpc/history_soft_delete_session", async (route) => await route.fulfill({ json: { result_version: 2 } }));
+  await page.route("**/rest/v1/rpc/routine_get_session_removal_impact", async (route) => await route.fulfill({ json: { affects_routine_week: false } }));
 }
 
 test.describe("Workout History", () => {

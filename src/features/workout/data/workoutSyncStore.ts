@@ -262,15 +262,6 @@ export async function enqueueOfflineWorkoutCommand(input: {
   });
 }
 
-export async function enqueueOfflineSetCommand(input: {
-  cache: ActiveSessionCache;
-  userId: string;
-  deviceId: string;
-  command: OfflineSetCommand;
-}) {
-  return enqueueOfflineWorkoutCommand(input);
-}
-
 export async function acknowledgeOperation(operationId: string, canonical: WorkoutSession) {
   const database = await openWorkoutDatabase();
   return new Promise<void>((resolve, reject) => {

@@ -23,7 +23,8 @@
 | Capability | Existing requirement / extension |
 | --- | --- |
 | Primary and secondary Muscles | FR-EX-01 |
-| Multi-day Routine and ordered Exercises | FR-PL-01–03 |
+| Flexible weekly Routine and ordered Exercises | FR-PL-01–06, FR-TD-01–05 |
+| Weekly Frequency, Coverage, History and Notifications | FR-WR-01–06 |
 | Per-set targets, rest and execution edits | FR-PL-02, FR-AW-04–07 |
 | Atomic Session snapshot and stable History | FR-AW-01, FR-PL-05, BR-04 |
 | History and derived Progress | FR-HI-01–05, FR-PR-01–04 |
@@ -34,12 +35,12 @@
 | --- | --- | --- |
 | Identity & Preferences | User, Device, display unit | workout content |
 | Exercise Catalog | Muscle, Exercise, primary/secondary muscle mapping | historical exercise snapshots |
-| Planning | Routine, RoutineDay, WorkoutTemplate, TemplateExercise, SetPrescription | Session history |
+| Planning | Routine, RoutineDay, RoutineActivation, RoutineWeekPlan, WorkoutTemplate, TemplateExercise, SetPrescription | completed-session evidence |
 | Workout Execution | WorkoutSession, SessionExercise, SessionSet, owner device, lifecycle | mutable Plan definitions |
-| History & Progress | completed-session queries and derived metrics | editable source-of-truth metrics |
+| History & Progress | completed-session queries, Weekly Routine History/Notifications and derived metrics | editable source-of-truth metrics |
 | Sync | operation IDs, versions and conflict state | fitness rules or snapshot content |
 
-Planning may be edited freely. Workout Execution owns all data after Start. History and Progress read completed Session data only.
+Routine definitions may be edited, but a locked RoutineWeekPlan is immutable and later changes take effect in a future week. Workout Execution owns all data after Start. History and Progress read completed Session data only.
 
 ## 3. Core relationship model
 
@@ -51,18 +52,24 @@ erDiagram
     MUSCLE ||--o{ EXERCISE_SECONDARY_MUSCLE : classifies
 
     USER ||--o{ ROUTINE : owns
-    ROUTINE ||--|{ ROUTINE_DAY : orders
+    ROUTINE ||--|{ ROUTINE_DAY : offers
     ROUTINE_DAY }o--|| WORKOUT_TEMPLATE : references
+    USER ||--o{ ROUTINE_ACTIVATION : schedules
+    ROUTINE ||--o{ ROUTINE_ACTIVATION : activated_as
+    ROUTINE ||--o{ ROUTINE_WEEK_PLAN : snapshots
+    ROUTINE_WEEK_PLAN ||--|{ ROUTINE_WEEK_PLAN_DAY : contains
+    ROUTINE_DAY ||--o{ ROUTINE_WEEK_PLAN_DAY : snapshots
     WORKOUT_TEMPLATE ||--|{ TEMPLATE_EXERCISE : contains
     EXERCISE ||--o{ TEMPLATE_EXERCISE : selected_as
     TEMPLATE_EXERCISE ||--|{ SET_PRESCRIPTION : prescribes
 
     USER ||--o{ WORKOUT_SESSION : performs
-    ROUTINE_DAY o|--o{ WORKOUT_SESSION : source
+    ROUTINE_WEEK_PLAN_DAY o|--o{ WORKOUT_SESSION : source
     WORKOUT_TEMPLATE o|--o{ WORKOUT_SESSION : source
     WORKOUT_SESSION ||--|{ SESSION_EXERCISE : snapshots
     SESSION_EXERCISE ||--|{ SESSION_SET : records
     DEVICE o|--o{ WORKOUT_SESSION : owns_active
+    ROUTINE_WEEK_PLAN ||--o| WEEKLY_ROUTINE_NOTIFICATION : may_generate
 ```
 
 Source relationships from Session to RoutineDay/Template are provenance only. Historical display and calculations must use Session snapshot rows, never current Plan values.
@@ -93,20 +100,34 @@ Primary Muscle is stored directly on Exercise because the current rule requires 
 
 Aggregate root representing a multi-day plan.
 
-- Name, weekly frequency target and active/archive state
-- Ordered `RoutineDay` collection
-- `next_workout_index` for Today resolution
+- Name, weekly frequency target, activation schedule and archive state
+- Selectable `RoutineDay` collection; display order is presentation only and never a required execution sequence
+- Weekly frequency target defaults to RoutineDay count but remains editable from 1–7
 - `revision` incremented on every plan-structure mutation
-- At most one active Routine per User
+- Activation has an explicit effective Routine Week; at most one Routine applies to a User in one week
 
 ### RoutineDay
 
-- Position within Routine, starting from 1
+- Stable identity and optional display position within Routine
 - Day label such as Push A or Lower B
 - Reference to one WorkoutTemplate
 - Optional notes/label override
 
-RoutineDay is a link rather than an owned copy of Template. A Template can be reused in multiple Routines or positions. The trade-off is an extra join and the need to snapshot both RoutineDay and Template identity when a Session starts.
+RoutineDay is a link rather than an owned copy of Template. A Template can be reused in multiple Routines or entries. The trade-off is an extra join and the need to snapshot both RoutineDay and Template identity when a Session starts. Two RoutineDays may reference the same Template and still count as different Coverage items because RoutineDay identity, not Template identity, defines Coverage.
+
+### RoutineActivation and RoutineWeekPlan
+
+`RoutineActivation` records which Routine becomes effective in the current or next Routine Week. If the current week already has a Routine Session, a new activation or structural change can take effect only in the next week.
+
+`RoutineWeekPlan` is the immutable weekly evaluation snapshot:
+
+- Monday/Sunday boundary and timezone snapshot
+- Routine ID, name/revision and Weekly Frequency Target snapshot
+- `RoutineWeekPlanDay` collection with RoutineDay/Template identity and labels
+- Lock state set when the first Routine Session starts
+- Result state: open, provisional after week end with a crossing Active Session, or finalized
+
+The weekly plan exists even when no Session is completed so History can represent `0/target` and every missing RoutineDay. Current Routine edits never rewrite a prior RoutineWeekPlan.
 
 ### WorkoutTemplate
 
@@ -144,7 +165,7 @@ Aggregate root for one performed workout.
 - User and owner-device identity
 - Source type: `PLANNED` or `AD_HOC`
 - Status: `ACTIVE`, `COMPLETED` or `DISCARDED`
-- Optional source RoutineDay/Template IDs and source revisions
+- Optional source RoutineWeekPlanDay/RoutineDay/Template IDs and source revisions
 - Snapshot plan/day/template names
 - Start/completion timestamps, notes, version and edit marker
 - Ordered `SessionExercise` collection
@@ -184,8 +205,8 @@ sequenceDiagram
     participant P as Planning store
     participant S as Session store
 
-    U->>A: Start RoutineDay with expected Template revision
-    A->>P: Read RoutineDay, Template, Exercises and Sets consistently
+    U->>A: Start selected RoutineWeekPlanDay with expected revisions
+    A->>P: Lock/read RoutineWeekPlanDay, Template, Exercises and Sets consistently
     A->>A: Validate active-session and revision rules
     A->>S: Insert Session + Exercise snapshots + Set snapshots
     A->>S: Claim owner device and ACTIVE status
@@ -234,13 +255,17 @@ This avoids repeated conversion drift and lets History display exactly the unit 
 ## 9. Aggregate invariants
 
 - Exercise has exactly one primary Muscle and no Muscle appears as both primary and secondary
-- Routine has at least one ordered RoutineDay; sequence positions are unique
+- Routine has at least one RoutineDay; display positions are unique but do not constrain execution order
+- Weekly Frequency Target defaults to RoutineDay count but may be edited to an integer 1–7
+- A User has at most one effective Routine and one RoutineWeekPlan per Routine Week
+- RoutineWeekPlan becomes immutable when its first Routine Session starts
 - WorkoutTemplate has at least one ordered TemplateExercise before activation
 - TemplateExercise has at least one SetPrescription for planned use
-- User has at most one Active Routine and one Active Session
+- User has at most one effective Routine per Routine Week and one Active Session
 - Session snapshot and owner-device claim are one atomic operation
 - Completed/Discarded Session cannot return to ACTIVE
-- Planned Session advances Routine only once when completed
+- Completed, non-deleted Routine Session counts once toward Frequency and its RoutineWeekPlanDay once toward Coverage; repeat Days add Frequency only
+- Session belongs to the Routine Week containing `started_at`; ad-hoc/discarded Sessions do not count
 - Progress uses completed, non-deleted SessionSets according to set-type policy
 
 Detailed validation, deletion and concurrency rules are defined in [Data Rules](data-rules.md).
@@ -251,11 +276,15 @@ Detailed validation, deletion and concurrency rules are defined in [Data Rules](
 | --- | --- | --- |
 | Normalized Session snapshot tables | Queryable History and analytics; relational constraints | More rows and schema migrations than one JSON blob |
 | Reusable Template referenced by RoutineDay | Avoids duplicated day definitions | More joins; source revisions must be captured |
+| Immutable RoutineWeekPlan snapshot | Accurate zero-session weeks, activation changes and historical Coverage | Adds weekly materialization/finalization lifecycle |
+| Session attribution by start time | Session crossing midnight remains in the week it was intentionally started | Closed-week result may remain provisional until Active Session resolves |
 | One row per planned set | Supports differing targets and future set types | More editing operations than aggregate set count |
 | Set kind plus `is_to_failure` | Supports working-to-failure and drop-to-failure | More validation than one mutually exclusive enum |
 | Original unit plus canonical kg | Exact historical display and consistent comparison | Two representations can diverge without strict write path |
 | Tagged RPE/RIR value | Supports old RIR requirements and new RPE requirement | Queries must filter by metric; conversion is not implicit |
 | Session source IDs plus copied values | Traceability without historical coupling | Developers may accidentally join live source fields; data rules must forbid it |
+
+เหตุผลของการแทน fixed sequence pointer ด้วย weekly snapshots บันทึกไว้ใน [ADR-0001](adr/0001-use-routine-week-snapshots.md)
 
 ## 11. Intentionally deferred
 

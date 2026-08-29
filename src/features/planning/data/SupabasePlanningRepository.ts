@@ -5,7 +5,6 @@ import {
   validateWorkoutTemplateDraft,
 } from "../domain/planningRules";
 import type {
-  ActiveRoutinePreview,
   EffortMetric,
   Routine,
   RoutineDay,
@@ -44,8 +43,6 @@ const ROUTINE_SELECT = [
   "id",
   "name",
   "weekly_frequency_target",
-  "next_workout_index",
-  "is_active",
   "revision",
   "archived_at",
   "routine_days(id,template_id,sequence_no,label,notes,template:workout_templates!routine_days_template_id_fkey(name,archived_at))",
@@ -172,8 +169,6 @@ function parseRoutine(value: unknown): Routine {
     id: requiredString(row.id, "id"),
     name: requiredString(row.name, "name"),
     weeklyFrequencyTarget: integer(row.weekly_frequency_target, "weekly_frequency_target", 1),
-    nextWorkoutIndex: integer(row.next_workout_index, "next_workout_index"),
-    isActive: booleanValue(row.is_active, "is_active"),
     revision: integer(row.revision, "revision", 1),
     archivedAt: nullableString(row.archived_at, "archived_at"),
     days: arrayValue(row.routine_days, "routine_days").map(parseRoutineDay).sort((a, b) => a.sequence - b.sequence),
@@ -198,6 +193,7 @@ function mapError(error: unknown, fallback: string): PlanningRepositoryError {
     const payload = asRecord(error.payload);
     const code = typeof payload?.code === "string" ? payload.code : "";
     const message = typeof payload?.message === "string" ? payload.message : "";
+    if (message === "routine_week_locked") return new PlanningRepositoryError("conflict", "Routine Week นี้เริ่มแล้ว เลือกให้การเปลี่ยนแปลงมีผลสัปดาห์หน้า");
     if (code === "40001" || message === "revision_conflict") return new PlanningRepositoryError("conflict", "ข้อมูลถูกแก้ไขจากหน้าต่างอื่นแล้ว กรุณาโหลดใหม่");
     if (code === "23503" && message.includes("referenced")) return new PlanningRepositoryError("referenced", "รายการนี้ยังถูกใช้งานอยู่");
     if (code === "P0002" || error.status === 404) return new PlanningRepositoryError("not-found", "ไม่พบข้อมูลที่ต้องการ");
@@ -354,23 +350,25 @@ export class SupabasePlanningRepository implements PlanningRepository {
     }
   }
 
-  async activateRoutine(id: string, expectedRevision: number): Promise<Routine> {
+  async activateRoutine(id: string, expectedRevision: number, timing: "CURRENT" | "NEXT"): Promise<string> {
     try {
-      const activatedId = rpcId(await this.client.request<unknown>({ method: "POST", path: "rpc/planning_activate_routine", body: { p_id: id, p_expected_revision: expectedRevision } }));
-      const routine = await this.getRoutine(activatedId);
-      if (!routine) throw new PlanningRepositoryError("unknown", "เปิดใช้งาน Routine แล้วแต่โหลดข้อมูลกลับไม่สำเร็จ");
-      return routine;
+      const state = asRecord(await this.client.request<unknown>({ method: "POST", path: "rpc/routine_get_current_week", body: {} }));
+      if (!state) throw new PlanningRepositoryError("unknown", "โหลดสัปดาห์ปัจจุบันไม่สำเร็จ");
+      const effectiveWeek = requiredString(timing === "CURRENT" ? state.current_week_start : state.next_week_start, "effective week");
+      const result = await this.client.request<unknown>({ method: "POST", path: "rpc/planning_activate_routine", body: { p_id: id, p_expected_revision: expectedRevision, p_effective_week_start: effectiveWeek } });
+      return typeof result === "string" ? result : effectiveWeek;
     } catch (error) {
       throw mapError(error, "เปิดใช้งาน Routine ไม่สำเร็จ");
     }
   }
 
-  async deactivateRoutine(id: string, expectedRevision: number): Promise<Routine> {
+  async deactivateRoutine(timing: "CURRENT" | "NEXT"): Promise<string> {
     try {
-      const deactivatedId = rpcId(await this.client.request<unknown>({ method: "POST", path: "rpc/planning_deactivate_routine", body: { p_id: id, p_expected_revision: expectedRevision } }));
-      const routine = await this.getRoutine(deactivatedId);
-      if (!routine) throw new PlanningRepositoryError("unknown", "ปิดใช้งาน Routine แล้วแต่โหลดข้อมูลกลับไม่สำเร็จ");
-      return routine;
+      const state = asRecord(await this.client.request<unknown>({ method: "POST", path: "rpc/routine_get_current_week", body: {} }));
+      if (!state) throw new PlanningRepositoryError("unknown", "โหลดสัปดาห์ปัจจุบันไม่สำเร็จ");
+      const effectiveWeek = requiredString(timing === "CURRENT" ? state.current_week_start : state.next_week_start, "effective week");
+      const result = await this.client.request<unknown>({ method: "POST", path: "rpc/planning_deactivate_routine", body: { p_effective_week_start: effectiveWeek } });
+      return typeof result === "string" ? result : effectiveWeek;
     } catch (error) {
       throw mapError(error, "ปิดใช้งาน Routine ไม่สำเร็จ");
     }
@@ -384,28 +382,6 @@ export class SupabasePlanningRepository implements PlanningRepository {
     }
   }
 
-  async getActiveRoutinePreview(): Promise<ActiveRoutinePreview | null> {
-    try {
-      const active = (await this.listRoutines()).find((routine) => routine.isActive);
-      if (!active || active.days.length === 0) return null;
-      const nextDay = active.days[Math.min(active.nextWorkoutIndex, active.days.length - 1)];
-      const template = await this.getTemplate(nextDay.templateId);
-      if (!template) throw new PlanningRepositoryError("not-found", "ไม่พบ Template ของ Routine ที่เปิดใช้งาน");
-      return {
-        routineId: active.id,
-        routineRevision: active.revision,
-        routineDayId: nextDay.id,
-        routineName: active.name,
-        weeklyFrequencyTarget: active.weeklyFrequencyTarget,
-        nextWorkoutIndex: active.nextWorkoutIndex,
-        dayCount: active.days.length,
-        dayLabel: nextDay.label || `Day ${nextDay.sequence}`,
-        template,
-      };
-    } catch (error) {
-      throw mapError(error, "โหลด Today's Workout ไม่สำเร็จ");
-    }
-  }
 }
 
 class UnconfiguredPlanningRepository implements PlanningRepository {
@@ -420,10 +396,9 @@ class UnconfiguredPlanningRepository implements PlanningRepository {
   getRoutine(): Promise<Routine | null> { return Promise.reject(this.error); }
   createRoutine(): Promise<Routine> { return Promise.reject(this.error); }
   updateRoutine(): Promise<Routine> { return Promise.reject(this.error); }
-  activateRoutine(): Promise<Routine> { return Promise.reject(this.error); }
-  deactivateRoutine(): Promise<Routine> { return Promise.reject(this.error); }
+  activateRoutine(): Promise<string> { return Promise.reject(this.error); }
+  deactivateRoutine(): Promise<string> { return Promise.reject(this.error); }
   archiveRoutine(): Promise<void> { return Promise.reject(this.error); }
-  getActiveRoutinePreview(): Promise<ActiveRoutinePreview | null> { return Promise.reject(this.error); }
 }
 
 export function createSupabasePlanningRepository(): PlanningRepository {

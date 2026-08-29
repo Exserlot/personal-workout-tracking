@@ -30,8 +30,8 @@ stateDiagram-v2
 - UI mutation ของ Active Session สำเร็จหลังเขียน IndexedDB แล้ว ไม่ต้องรอ network
 - Template ถูก snapshot ตอนสร้าง Session
 - Server mutations ใช้ stable operation IDs และ version checks
-- Planned Session เลื่อน Routine เมื่อ completed เท่านั้น
-- Ad-hoc, active และ discarded Sessions ไม่เลื่อน Routine
+- Completed, non-deleted Routine Session นับ Frequency/Coverage ของ Routine Week ที่มีเวลาเริ่ม Session
+- Ad-hoc, active และ discarded Sessions ไม่นับ Frequency/Coverage
 
 ## 2. UF-01 — Owner login และ initial setup
 
@@ -102,7 +102,7 @@ stateDiagram-v2
 
 ## 4. UF-03 — สร้าง Workout Template และ activate Routine
 
-**Requirements:** FR-PL-01–05  
+**Requirements:** FR-PL-01–06
 **Pages:** P-05 Plans & Routines, P-06 Workout Template Editor, P-03 Exercise Library
 
 **Entry point:** Owner เปิด Plans & Routines  
@@ -118,11 +118,12 @@ stateDiagram-v2
 
 ### Happy path — Routine
 
-1. ผู้ใช้สร้าง Routine และกำหนด weekly frequency target
-2. เพิ่ม Templates เป็น ordered sequence เช่น A → B → C
-3. กด Activate
-4. ระบบ deactivate Routine เดิม ตั้งรายการใหม่เป็น Active Routine และตั้ง `next-workout index = 0`
-5. Today พร้อม resolve Template แรก
+1. ผู้ใช้สร้าง Routine และเพิ่ม Routine Days เช่น Push, Pull และ Legs
+2. ระบบตั้ง weekly frequency target เริ่มต้นเท่าจำนวน Routine Days; ผู้ใช้แก้เป็นจำนวนเต็ม 1–7 ได้
+3. ผู้ใช้กด Activate และเลือก effective week เป็นสัปดาห์ปัจจุบันหรือสัปดาห์ถัดไป
+4. ถ้าสัปดาห์ปัจจุบันมี Routine Session แล้ว ระบบบังคับ effective week เป็นสัปดาห์ถัดไป; ถ้ายังไม่มี ผู้ใช้เลือกได้ทั้งสองแบบ
+5. ระบบรับรองว่ามี Routine ที่มีผลเพียงหนึ่งรายการต่อ Routine Week และเตรียม Routine Week Plan
+6. Today แสดง Routine Days ทั้งหมดโดยไม่บังคับลำดับ
 
 ### Validation
 
@@ -130,19 +131,21 @@ stateDiagram-v2
 - Template ต้องมี Exercise อย่างน้อยหนึ่งรายการก่อนใช้ใน Active Routine
 - Routine ต้องมี Template อย่างน้อยหนึ่งรายการ
 - Weekly frequency target ต้องเป็นจำนวนเต็ม 1–7
+- Effective week ต้องเป็น Routine Week ปัจจุบันหรือถัดไปเท่านั้น
 
 ### Alternate/error paths
 
 - Archive Template ที่อยู่ใน Active Routine: ระบบบล็อกและให้ถอดออกหรือเปลี่ยน Routine ก่อน
 - แก้ Template หลังมี History: Save ได้ แต่ไม่แก้ Session snapshots
-- เปลี่ยน Active Routine ขณะมี Active Session: ระบบบล็อกจนกว่า Session จะ completed/discarded
+- แก้หรือเปลี่ยน Active Routine หลังเริ่ม Routine Session แรกของสัปดาห์: บันทึกเป็น Pending Routine Change ที่มีผลสัปดาห์ถัดไป
+- เปลี่ยน Routine ก่อนเริ่ม Routine Session แรก: มีผลสัปดาห์ปัจจุบันได้หลังยืนยัน
 
 **State change:** Templates/Routine created; zero or one Active Routine  
-**Outcome:** Today สามารถ resolve next workout ได้
+**Outcome:** Today สามารถ resolve Routine Week Plan และ Routine Day choices ได้
 
 ## 5. UF-04 — Resolve Today’s Workout
 
-**Requirements:** FR-TD-01–04, FR-AW-02  
+**Requirements:** FR-TD-01–05, FR-AW-02, FR-WR-01–02
 **Pages:** P-02 Today
 
 **Entry point:** Owner เปิด Today  
@@ -152,21 +155,22 @@ stateDiagram-v2
 
 1. ตรวจ Active Session ก่อน
 2. ถ้ามี ให้แสดง Resume เป็น primary action พร้อม sync/owner-device state
-3. ถ้าไม่มี ให้ตรวจ Active Routine
-4. ถ้ามี ให้เลือก Template ที่ `next-workout index`
-5. ถ้า index ถึงท้าย sequence ให้วนกลับรายการแรก
-6. แสดง preview, previous completion และ Start CTA
-7. ถ้าไม่มี Active Routine ให้แสดง setup guidance
+3. ถ้าไม่มี ให้ resolve Routine Week ปัจจุบันตาม timezone และ Active Routine ที่มีผล
+4. โหลด Routine Week Plan พร้อม Frequency, Coverage และ Routine Days ทั้งหมด
+5. แสดง Routine Days ที่ Coverage ยังขาดทั้งหมดเป็น Recommended พร้อมกัน
+6. แสดง Routine Days ที่เล่นแล้วเป็นตัวเลือก Repeat โดยไม่ปิดกั้น
+7. ผู้ใช้เลือก Routine Day หนึ่งรายการเพื่อดู preview และ Start
+8. ถ้าไม่มี Active Routine ที่มีผล ให้แสดง setup guidance
 
 ### Alternate paths
 
 - Active Session เป็นของอุปกรณ์อื่น: แสดง read-only status และวิธีกลับไป owner device
 - Offline และมี cached Active Session: เปิด Resume ได้
 - Offline แต่ไม่มี cached plan: ไม่อนุญาตสร้าง planned Session จากข้อมูลที่ไม่พร้อม
-- ผู้ใช้เลือก Template อื่นหรือ blank session: สร้างเป็น ad-hoc และไม่เปลี่ยน Routine
+- ผู้ใช้เลือก Template นอก Routine Week Plan หรือ blank session: สร้างเป็น ad-hoc และไม่นับ Frequency/Coverage
 
 **State change:** ไม่มีจนกด Start  
-**Outcome:** ผู้ใช้เห็น next action เดียวที่สอดคล้องกับ state ปัจจุบัน
+**Outcome:** ผู้ใช้เห็นรายการที่ควรฝึกเพื่อให้ Coverage ครบ แต่ยังตัดสินใจเลือก Routine Day เองได้
 
 ## 6. UF-05 — Start หรือ resume Workout
 
@@ -177,11 +181,13 @@ stateDiagram-v2
 
 1. ผู้ใช้กด Start
 2. ระบบตรวจว่าไม่มี Active Session ซ้ำ
-3. Planned: snapshot Template/targets; ad-hoc: สร้าง session เปล่าและติด label
+3. Routine: snapshot Routine Week Plan Day, Template และ targets; ad-hoc: สร้าง session เปล่าหรือตาม Template โดยไม่ผูก Routine Week Plan
 4. สร้าง Session ID และ owner-device ID
 5. เขียน Active Session ลง IndexedDB
 6. ถ้า online ให้สร้าง/claim Session บน server; ถ้า offline ให้ queue operation
 7. เปิด Active Workout
+
+Routine Session แรกของสัปดาห์ต้อง lock Routine Week Plan ก่อนสร้าง Session ใน transaction เดียวกัน
 
 ### Resume
 
@@ -245,7 +251,7 @@ stateDiagram-v2
 ### Exit without finishing
 
 1. ผู้ใช้ออกจากหน้า Active Workout
-2. ระบบคง Session เป็น active และไม่เลื่อน Routine
+2. ระบบคง Session เป็น active และยังไม่นับ Frequency/Coverage
 3. Today เปลี่ยน primary action เป็น Resume
 
 ### Finish
@@ -253,20 +259,20 @@ stateDiagram-v2
 1. ผู้ใช้กด Finish
 2. ระบบสรุป completed/incomplete sets และขอ confirmation หากไม่มี working set
 3. Client queue finish operation และเปลี่ยน local state เป็น completed
-4. Planned Session เลื่อน `next-workout index`; ad-hoc ไม่เลื่อน
-5. ระบบเปิด Completion Summary และคำนวณ PR/metrics ใหม่
-6. เมื่อ online server commit Session และ Routine advancement แบบ atomic operation
+4. Routine Session นับเพิ่ม Frequency หนึ่งครั้ง และเพิ่ม Coverage เมื่อเป็น Completed Session แรกของ Routine Day นั้นในสัปดาห์; ad-hoc ไม่นับ
+5. ระบบเปิด Completion Summary และคำนวณ PR/metrics กับ Weekly Routine History ใหม่
+6. เมื่อ online server commit Session และ weekly result invalidation แบบ atomic, idempotent operation
 
 ### Discard
 
 1. ผู้ใช้กด Discard และเห็นผลกระทบ
 2. ผู้ใช้ยืนยัน
 3. Session เปลี่ยนเป็น discarded, pending mutations ถูกปิดด้วย discard operation
-4. Session ไม่เข้า History/Progress และ Routine ไม่เลื่อน
+4. Session ไม่เข้า History/Progress และไม่นับ Frequency/Coverage
 
 ### Error paths
 
-- Finish sync ล้มเหลว: แสดง completed-pending-sync ใน client และ retry โดยไม่เลื่อน Routine ซ้ำ
+- Finish sync ล้มเหลว: แสดง completed-pending-sync ใน client และ retry โดยไม่เพิ่ม Frequency/Coverage ซ้ำ
 - อุปกรณ์อื่นพยายาม Finish/Discard: บล็อก ยกเว้น explicit remote-abandon action ที่ไม่ merge ข้อมูล
 
 **State change:** active → completed หรือ discarded  
@@ -306,25 +312,27 @@ stateDiagram-v2
 **Requirements:** FR-AW-02–03, FR-AW-09, BR-09  
 **Pages:** P-02 Today, P-07 Active Workout, P-13 Settings & Sync Status
 
-**Entry point:** server ปฏิเสธ mutation เพราะ device/version ownership ไม่ตรง  
-**Preconditions:** มี local state หรือ pending operations ที่ต้องรักษา
+**Entry point:** ผู้ใช้เปิด Active Session จาก non-owner device หรือ server ปฏิเสธ mutation เพราะ device/version ownership ไม่ตรง
+**Preconditions:** มี Active Session บน server; ownership transfer ต้อง online
 
 ### Flow
 
-1. Client หยุดส่ง operations ของ Session ที่ conflict
+1. Client หยุดส่ง operations ของ Session ที่ conflict และแสดง server-synced state แบบ read-only
 2. UI แสดง local version, server-synced summary และ owner-device information
 3. ไม่มี automatic last-write-wins หรือ field-level merge
-4. Primary action ให้กลับไป owner device
-5. Secondary administrative action อนุญาต abandon server session หลังคำเตือน หากผู้ใช้ยืนยันว่าไม่ต้องการข้อมูล unsynced จาก owner device
-6. Local conflicting copy ต้องไม่ถูกลบทันทีและต้องไม่ overwrite session ใหม่
+4. ถ้า non-owner device online และไม่มี local conflict ผู้ใช้เลือก `ทำต่อบนเครื่องนี้` และยืนยันว่า unsynced changes บนอุปกรณ์เดิมอาจไม่ตามมา
+5. Server เปลี่ยน owner device และ version แบบ atomic; อุปกรณ์ใหม่โหลด canonical state ใหม่ ส่วนอุปกรณ์เดิมกลายเป็น read-only เมื่อ mutation ถัดไปถูกตรวจ
+6. ถ้ามี conflict อยู่แล้ว Primary recovery ยังคงเป็นกลับไป owner device หรือใช้ข้อมูล server โดยรักษา local copy
+7. Secondary administrative action อนุญาต abandon server session หลังคำเตือน หากผู้ใช้ยืนยันว่าไม่ต้องการข้อมูล unsynced จาก owner device
+8. Local conflicting copy ต้องไม่ถูกลบทันทีและต้องไม่ overwrite session ใหม่
 
-**State change:** pending → conflict; server session อาจ active → discarded จาก explicit abandon  
-**Outcome:** ไม่มี silent data loss และผู้ใช้ทราบว่าต้องเลือกข้อมูลชุดใด
+**State change:** non-owner read-only → owner editable; pending → conflict; server session อาจ active → discarded จาก explicit abandon
+**Outcome:** ผู้ใช้ทำ Session ต่อข้ามอุปกรณ์ได้โดยยังคง single writer และไม่มี silent merge/data loss
 
 ## 11. UF-10 — Review, edit และ delete History
 
-**Requirements:** FR-HI-01–05  
-**Pages:** P-09 Workout History, P-10 History Detail / Edit
+**Requirements:** FR-HI-01–05, FR-WR-04, FR-WR-06
+**Pages:** P-09 Workout History, P-10 History Detail / Edit, P-15 Weekly Routine History
 
 **Entry point:** Owner เปิด History  
 **Preconditions:** authenticated และ online สำหรับ mutation
@@ -334,13 +342,14 @@ stateDiagram-v2
 1. ระบบแสดง Completed Sessions ใหม่ไปเก่า
 2. ผู้ใช้เปิด Session Detail และดู Exercises, sets, notes และ PR
 3. ผู้ใช้เข้า Edit, ปรับข้อมูล และ Save
-4. Server update Session, บันทึก retrospective-edit marker และ invalidate Progress
-5. UI refresh summary และ metrics ที่เกี่ยวข้อง
+4. Server update Session, บันทึก retrospective-edit marker และ invalidate Progress กับ Weekly Routine History ที่เกี่ยวข้อง
+5. UI refresh summary, metrics, Frequency และ Coverage ที่เกี่ยวข้อง
 
 ### Delete
 
-1. Delete ต้องแสดงผลกระทบต่อ Progress และขอ confirmation
-2. Server soft-delete Session และ invalidate metrics
+1. Delete ต้องแสดงผลกระทบต่อ Progress และ Weekly Routine History รวมถึง Routine Days ที่อาจเปลี่ยนเป็นไม่ได้ฝึก แล้วขอ confirmation
+2. Server soft-delete Session และ invalidate metrics/weekly results
+3. UI แสดง acknowledgement หลังลบ แต่ไม่สร้าง Weekly Routine Notification ใหม่จากการกระทำนี้
 
 ### Validation/error paths
 
@@ -349,7 +358,7 @@ stateDiagram-v2
 - Offline: ดู cached detail ได้ถ้ามี แต่ edit/delete ต้องรอ online
 
 **State change:** completed → edited/soft-deleted  
-**Outcome:** History และ Progress สอดคล้องกันหลัง mutation
+**Outcome:** Workout History, Progress และ Weekly Routine History สอดคล้องกันหลัง mutation
 
 ## 12. UF-11 — Review Exercise Progress
 
@@ -375,3 +384,36 @@ stateDiagram-v2
 
 **State change:** ไม่มี source mutation  
 **Outcome:** ผู้ใช้ตรวจ progressive overload และ trace ทุกค่าไปยัง History ได้
+
+## 13. UF-12 — ปิด Routine Week, รับ notification และดู Weekly Routine History
+
+**Requirements:** FR-WR-01–06
+**Pages:** P-14 Notification Center, P-15 Weekly Routine History, P-05 Plans & Routines
+
+**Entry point:** Routine Week เปลี่ยนเป็นวันจันทร์ตาม timezone หรือ Owner เปิด Notification Center/Weekly Routine History
+**Preconditions:** authenticated และมี Routine Week Plan สำหรับสัปดาห์ที่ประเมิน
+
+### Week close และ history
+
+1. ระบบรวม Completed, non-deleted Routine Sessions ตาม `started_at` และ Routine Week Plan
+2. คำนวณ Frequency จากจำนวน Sessions และ Coverage จาก Routine Week Plan Days ที่มีอย่างน้อยหนึ่ง Session
+3. สัปดาห์ที่ไม่มี Routine Session ยังสร้างผล `0/target` และ `0/day-count` พร้อมรายการที่ขาดทั้งหมด
+4. ถ้ามี Active Session ที่เริ่มในสัปดาห์เก่า ผลเป็น provisional และแสดง Day นั้นเป็นกำลังดำเนินการ
+5. เมื่อ Session คร่อมสัปดาห์ completed/discarded ระบบคำนวณและ finalize ผลสัปดาห์เก่า
+
+### Notification Center
+
+1. เมื่อผล finalized และ Frequency หรือ Coverage ไม่ครบ ระบบสร้าง notification แยกหนึ่งรายการต่อ Routine Week
+2. Notification แสดงช่วงสัปดาห์, ผล Frequency/Coverage และ Routine Days ที่ขาด
+3. การเปิด notification mark เป็น read และเปิด P-15 ของสัปดาห์นั้น แต่ไม่ซ่อนรายการ
+4. ผู้ใช้กด Dismiss เพื่อซ่อน notification รายการนั้นโดยไม่แก้ Weekly Routine History
+5. Notification Center มี action ไป P-15 เพื่อดูประวัติ Routine ทั้งหมด
+
+### Alternate/error paths
+
+- ผู้ใช้ไม่ได้เปิดแอปหลายสัปดาห์: สร้าง/แสดง notification แยกสำหรับทุก Routine Week ที่ finalized แล้วไม่ครบ
+- Retrospective edit/delete เปลี่ยนผลสัปดาห์เก่า: คำนวณ History ใหม่ แต่ไม่สร้าง notification ใหม่; action ต้นทางต้องเตือนผลกระทบก่อนยืนยัน
+- Offline: แสดง cached notifications/history ได้ถ้ามี แต่ read/dismiss และผลคำนวณใหม่รอ sync
+
+**State change:** Routine Week result open/provisional → finalized; notification unread → read → dismissed
+**Outcome:** ผู้ใช้เห็นสัปดาห์ที่ขาดอย่างแยกจากกันและย้อนดู Weekly Routine History ได้ถาวร

@@ -10,6 +10,8 @@ function session(): WorkoutSession {
     sourceType: "AD_HOC",
     sourceRoutineId: null,
     sourceRoutineDayId: null,
+    sourceRoutineWeekPlanId: null,
+    sourceRoutineWeekPlanDayId: null,
     sourceTemplateId: null,
     sourceRoutineRevision: null,
     sourceTemplateRevision: null,

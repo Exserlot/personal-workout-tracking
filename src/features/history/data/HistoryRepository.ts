@@ -1,15 +1,7 @@
-import type { HistoryDeleteInput, HistoryListItem, HistoryPageResult, HistoryQuery, HistoryRepository, HistorySessionResult, HistoryUpdateInput } from "../domain/history";
+import type { HistoryListItem, HistoryRepository } from "../domain/history";
 import { HistoryRepositoryError } from "../domain/history";
-import type { WorkoutSession } from "../../workout/domain/workout";
 
 export type { HistoryRepository };
-
-export interface HistoryRepositoryClient extends HistoryRepository {
-  listSessions(query: HistoryQuery): Promise<HistoryPageResult>;
-  getSession(sessionId: string): Promise<HistorySessionResult | null>;
-  updateSession(input: HistoryUpdateInput): Promise<WorkoutSession>;
-  softDeleteSession(input: HistoryDeleteInput): Promise<void>;
-}
 
 export function historyListItemFromRow(row: Record<string, unknown>): HistoryListItem {
   if (typeof row.session_id !== "string" || typeof row.completed_at !== "string" || (row.source_type !== "PLANNED" && row.source_type !== "AD_HOC")) throw new HistoryRepositoryError("unknown", "History response มีข้อมูลไม่ครบ");

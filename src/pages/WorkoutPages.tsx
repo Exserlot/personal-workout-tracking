@@ -312,6 +312,8 @@ export function ActiveWorkoutPage() {
     const [timer, setTimer] = useState<WorkoutTimerCache>(DEFAULT_TIMER);
     const [clock, setClock] = useState(Date.now());
     const [pickerOpen, setPickerOpen] = useState(false);
+    const [transferOpen, setTransferOpen] = useState(false);
+    const [transferOperationId, setTransferOperationId] = useState<string | null>(null);
     const [availableExercises, setAvailableExercises] = useState<Exercise[]>(
         [],
     );
@@ -873,6 +875,35 @@ export function ActiveWorkoutPage() {
         setPickerOpen(true);
     }
 
+    async function transferOwnership() {
+        const current = sessionRef.current;
+        if (!current || !isOnline || current.status !== "ACTIVE") return;
+        const operationId = transferOperationId ?? crypto.randomUUID();
+        setTransferOperationId(operationId);
+        setBusyAction(true);
+        setError("");
+        try {
+            const transferred = await repository.transferSessionOwnership({
+                operationId,
+                sessionId: current.id,
+                targetDeviceId: deviceId,
+                expectedVersion: current.version,
+            });
+            await acceptSession(transferred, null);
+            syncCoordinator.start(transferred.id);
+            setTransferOpen(false);
+            setTransferOperationId(null);
+        } catch (transferError) {
+            setError(
+                transferError instanceof WorkoutRepositoryError
+                    ? transferError.message
+                    : "ย้าย Session มาที่อุปกรณ์นี้ไม่สำเร็จ",
+            );
+        } finally {
+            setBusyAction(false);
+        }
+    }
+
     if (status === "loading") return <ActiveWorkoutLoading />;
     if (status === "error")
         return (
@@ -969,6 +1000,32 @@ export function ActiveWorkoutPage() {
                         </Link>
                     ) : null}
                 </div>
+            ) : null}
+            {!offlineReadOnly && session.status === "ACTIVE" && session.ownerDeviceId !== deviceId ? (
+                <section
+                    aria-labelledby="session-owner-title"
+                    className="mx-auto flex max-w-content flex-col gap-4 border-b border-warning px-4 py-5 tablet:flex-row tablet:items-center tablet:justify-between tablet:px-6 desktop:px-8 large:px-12"
+                >
+                    <div>
+                        <h2 id="session-owner-title" className="font-semibold text-warning">
+                            Session นี้เริ่มจากอุปกรณ์อื่น
+                        </h2>
+                        <p className="mt-1 max-w-2xl text-sm leading-6 text-ink-secondary">
+                            ตอนนี้เปิดดูได้อย่างเดียว คุณสามารถย้ายสิทธิ์มาที่อุปกรณ์นี้เพื่อบันทึกเซ็ตต่อจากข้อมูลล่าสุดบน Server
+                        </p>
+                        {!isOnline ? (
+                            <p className="mt-1 text-sm text-warning">ต้องเชื่อมต่ออินเทอร์เน็ตก่อนย้าย Session</p>
+                        ) : null}
+                    </div>
+                    <Button
+                        variant="accent"
+                        className="shrink-0"
+                        disabled={!isOnline || busyAction || syncBlocked || syncSnapshot.pendingCount > 0}
+                        onClick={() => setTransferOpen(true)}
+                    >
+                        ทำต่อบนเครื่องนี้
+                    </Button>
+                </section>
             ) : null}
             <div className="page-grid mx-auto max-w-content px-4 pt-6 tablet:px-6 tablet:pt-8 desktop:px-8 large:px-12">
                 {session.exercises.length > 0 ? (
@@ -1318,7 +1375,7 @@ export function ActiveWorkoutPage() {
             </div>
             <div className="safe-bottom fixed inset-x-0 bottom-0 z-30 border-t border-line bg-canvas p-4 tablet:hidden">
                 <Button
-                    variant="accent"
+                    variant={ownerActive ? "accent" : "secondary"}
                     size="large"
                     fullWidth
                     disabled={
@@ -1358,6 +1415,39 @@ export function ActiveWorkoutPage() {
                     onSelect={(exercise) => void addExercise(exercise)}
                 />
             ) : null}
+            <ModalDialog
+                open={transferOpen}
+                onClose={() => {
+                    if (!busyAction) {
+                        setTransferOpen(false);
+                        setTransferOperationId(null);
+                    }
+                }}
+                title="ย้าย Session มาที่เครื่องนี้?"
+                description="ข้อมูลที่ซิงก์ถึง Server แล้วจะตามมาที่เครื่องนี้ ส่วนการแก้ไขที่ยังค้างอยู่บนเครื่องเดิมอาจไม่ตามมา และเครื่องเดิมจะเปลี่ยนเป็นอ่านอย่างเดียว"
+                role="alertdialog"
+                closeOnBackdrop={!busyAction}
+            >
+                <div className="flex flex-col-reverse gap-2 tablet:flex-row tablet:justify-end">
+                    <Button
+                        variant="quiet"
+                        disabled={busyAction}
+                        onClick={() => {
+                            setTransferOpen(false);
+                            setTransferOperationId(null);
+                        }}
+                    >
+                        ยังไม่ย้าย
+                    </Button>
+                    <Button
+                        variant="accent"
+                        disabled={busyAction || !isOnline}
+                        onClick={() => void transferOwnership()}
+                    >
+                        {busyAction ? "กำลังย้าย…" : "ย้าย Session มาที่เครื่องนี้"}
+                    </Button>
+                </div>
+            </ModalDialog>
         </div>
     );
 }
